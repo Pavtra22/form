@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ .Name }}</title>
+    <style>
+        /* Mobile-First CSS */
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background: #f3f4f6; 
+            margin: 0; 
+            padding: 16px; 
+        }
+        .container { 
+            max-width: 640px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 24px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); 
+        }
+        h1 { 
+            margin-top: 0; 
+            color: #1f2937; 
+            border-bottom: 1px solid #e5e7eb; 
+            padding-bottom: 16px; 
+            margin-bottom: 24px; 
+            font-size: 24px; 
+        }
+        .form-group { margin-bottom: 24px; }
+        label { display: block; font-weight: 600; margin-bottom: 8px; color: #374151; font-size: 16px; }
+        .required { color: #dc2626; margin-left: 4px; }
+        
+        /* Inputs */
+        input[type="text"], input[type="email"], input[type="tel"], input[type="date"], textarea, select {
+            width: 100%; 
+            padding: 12px; 
+            border: 1px solid #d1d5db; 
+            border-radius: 8px; 
+            font-size: 16px; 
+            box-sizing: border-box; 
+            transition: border-color 0.2s;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+        
+        button[type="submit"] {
+            width: 100%; 
+            background-color: #2563eb; 
+            color: white; 
+            font-weight: 600; 
+            padding: 14px; 
+            border: none; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-size: 16px; 
+            transition: background 0.2s;
+            margin-top: 10px;
+        }
+        button[type="submit"]:active { background-color: #1d4ed8; transform: scale(0.98); }
+        button:disabled { background-color: #9ca3af; cursor: not-allowed; }
+        
+        /* Star Rating */
+        .stars { display: flex; gap: 8px; flex-wrap: wrap; }
+        .star { 
+            font-size: 32px; 
+            cursor: pointer; 
+            color: #d1d5db; 
+            background: none; 
+            border: none; 
+            padding: 0; 
+            line-height: 1;
+        }
+        .star.active { color: #facc15; }
+
+        /* Video Recorder */
+        .video-container { 
+            border: 2px dashed #d1d5db; 
+            border-radius: 8px; 
+            padding: 12px; 
+            text-align: center; 
+            background: #f9fafb; 
+        }
+        video { 
+            width: 100%; 
+            max-height: 400px; 
+            border-radius: 6px; 
+            background: black; 
+            display: none; 
+            margin-bottom: 12px; 
+            object-fit: cover; 
+        }
+        .video-btn { 
+            background: #dc2626; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 30px; 
+            cursor: pointer; 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 8px; 
+            font-size: 14px; 
+            font-weight: 500;
+        }
+        .video-btn.stop { background: #374151; }
+
+        /* Progress Bar Styles */
+        .progress-wrapper {
+            display: none;
+            margin-top: 20px;
+            width: 100%;
+            background-color: #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            width: 0%;
+            height: 10px;
+            background-color: #2563eb;
+            transition: width 0.2s;
+        }
+        .progress-text {
+            text-align: center;
+            font-size: 14px;
+            color: #374151;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>{{ .Name }}</h1>
+    <form id="mainForm">
+        {{ range .Elements }}
+        <div class="form-group">
+            <label>
+                {{ .Label }} 
+                {{ if .Required }}<span class="required">*</span>{{ end }}
+            </label>
+
+            {{ if eq .Type "text" }}
+                <input type="text" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
+            {{ else if eq .Type "email" }}
+                <input type="email" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
+            {{ else if eq .Type "phone" }}
+                <input type="tel" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
+            {{ else if eq .Type "date" }}
+                <input type="date" name="{{ .Label }}" {{ if .Required }}required{{ end }}>
+            {{ else if eq .Type "textarea" }}
+                <textarea name="{{ .Label }}" rows="4" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}></textarea>
+            {{ else if eq .Type "select" }}
+                <select name="{{ .Label }}" {{ if .Required }}required{{ end }}>
+                    <option value="" disabled selected>Select an option</option>
+                    <option value="Option 1">Option 1</option>
+                    <option value="Option 2">Option 2</option>
+                </select>
+            {{ else if eq .Type "stars" }}
+                <div class="stars" id="stars-{{ .ID }}">
+                    <input type="hidden" name="{{ .Label }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
+                    <button type="button" class="star" onclick="setRating('{{ .ID }}', 1)">★</button>
+                    <button type="button" class="star" onclick="setRating('{{ .ID }}', 2)">★</button>
+                    <button type="button" class="star" onclick="setRating('{{ .ID }}', 3)">★</button>
+                    <button type="button" class="star" onclick="setRating('{{ .ID }}', 4)">★</button>
+                    <button type="button" class="star" onclick="setRating('{{ .ID }}', 5)">★</button>
+                </div>
+            {{ else if eq .Type "video" }}
+                <div class="video-container" id="video-wrapper-{{ .ID }}">
+                    <input type="hidden" name="{{ .Label }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
+                    
+                    <video id="preview-{{ .ID }}" autoplay muted playsinline></video>
+                    <video id="playback-{{ .ID }}" controls playsinline></video>
+                    
+                    <div style="margin-top: 10px;">
+                        <button type="button" id="btn-start-{{ .ID }}" class="video-btn" onclick="startRecording('{{ .ID }}')">
+                            <span style="font-size: 18px;">●</span> Start Recording
+                        </button>
+                        <button type="button" id="btn-stop-{{ .ID }}" class="video-btn stop" onclick="stopRecording('{{ .ID }}')" style="display:none;">
+                            ■ Stop Recording
+                        </button>
+                    </div>
+                    <p id="status-{{ .ID }}" style="font-size: 12px; color: #6b7280; margin-top: 8px;">Ready to record</p>
+                </div>
+            {{ end }}
+        </div>
+        {{ end }}
+
+        <div class="progress-wrapper" id="uploadProgress">
+            <div class="progress-bar" id="progressBar"></div>
+            <p class="progress-text" id="progressText">Uploading: 0%</p>
+        </div>
+
+        <button type="submit" id="submitBtn">Submit Form</button>
+    </form>
+</div>
+
+<script>
+    function setRating(id, value) {
+        document.getElementById('input-' + id).value = value;
+        const container = document.getElementById('stars-' + id);
+        const stars = container.querySelectorAll('.star');
+        stars.forEach((star, index) => {
+            star.classList.toggle('active', index < value);
+        });
+    }
+
+    // --- VIDEO RECORDING LOGIC ---
+    let recorders = {};
+    let chunks = {};
+    let finalBlobs = {}; 
+    let recordedTypes = {}; 
+
+    async function startRecording(id) {
+        try {
+            finalBlobs[id] = null;
+            chunks[id] = [];
+
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "user" }, 
+                audio: true 
+            });
+            
+            const preview = document.getElementById('preview-' + id);
+            preview.style.display = 'block';
+            document.getElementById('playback-' + id).style.display = 'none';
+            preview.srcObject = stream;
+
+            const mimeTypes = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+            let selectedMimeType = '';
+            for (const type of mimeTypes) {
+                if (MediaRecorder.isTypeSupported(type)) {
+                    selectedMimeType = type;
+                    break;
+                }
+            }
+            const options = selectedMimeType ? { mimeType: selectedMimeType } : undefined;
+            const mediaRecorder = new MediaRecorder(stream, options);
+            
+            recorders[id] = mediaRecorder;
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunks[id].push(e.data);
+            };
+            
+            mediaRecorder.onstop = () => {
+                const blobType = selectedMimeType || 'video/webm';
+                const blob = new Blob(chunks[id], { type: blobType });
+                
+                finalBlobs[id] = blob;
+                recordedTypes[id] = blobType;
+
+                document.getElementById('input-' + id).value = "[VIDEO_ATTACHED]";
+
+                preview.style.display = 'none';
+                const playback = document.getElementById('playback-' + id);
+                playback.src = URL.createObjectURL(blob);
+                playback.style.display = 'block';
+                
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+
+            document.getElementById('btn-start-' + id).style.display = 'none';
+            document.getElementById('btn-stop-' + id).style.display = 'inline-flex';
+            document.getElementById('status-' + id).innerText = "Recording...";
+        } catch (err) {
+            alert("Could not access camera. Ensure you have granted permissions and are using HTTPS or localhost.");
+            console.error(err);
+        }
+    }
+
+    function stopRecording(id) {
+        if (recorders[id] && recorders[id].state !== 'inactive') {
+            recorders[id].stop();
+            const startBtn = document.getElementById('btn-start-' + id);
+            startBtn.style.display = 'inline-flex';
+            startBtn.innerHTML = '↺ Retake';
+            document.getElementById('btn-stop-' + id).style.display = 'none';
+            document.getElementById('status-' + id).innerText = "Video captured!";
+        }
+    }
+
+    // --- FORM SUBMISSION LOGIC ---
+    document.getElementById('mainForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        // 1. Safety Check: Ensure no active recording
+        for (const id in recorders) {
+            if (recorders[id].state === 'recording') {
+                alert("Please stop recording before submitting.");
+                return;
+            }
+        }
+
+        const btn = document.getElementById('submitBtn');
+        const progressWrapper = document.getElementById('uploadProgress');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+
+        btn.disabled = true;
+        btn.innerText = "Preparing...";
+        
+        const pathParts = window.location.pathname.split('/');
+        const formId = parseInt(pathParts[pathParts.length - 1]);
+
+        // 2. Prepare Data
+        const formDataObj = new FormData(this);
+        const textData = {};
+        formDataObj.forEach((value, key) => {
+             textData[key] = value;
+        });
+
+        const finalFormData = new FormData();
+        finalFormData.append('form_schema_id', formId);
+        finalFormData.append('data', JSON.stringify(textData));
+
+        // 3. Append Videos (FIXED for UUIDs)
+        document.querySelectorAll('.video-container').forEach(container => {
+            // FIX: Search inside the container instead of parsing the ID
+            const input = container.querySelector('input[type="hidden"]');
+            
+            if (input) {
+                // Extract clean ID
+                const id = input.id.replace('input-', '');
+                const label = input.name; 
+
+                if (finalBlobs[id]) {
+                    const mime = recordedTypes[id] || '';
+                    const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+                    const filename = `video-${Date.now()}.${ext}`;
+                    finalFormData.append(label, finalBlobs[id], filename);
+                }
+            }
+        });
+
+        // 4. Send via XMLHttpRequest for Progress
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/submit', true);
+
+        // Upload Progress
+        xhr.upload.onprogress = function(e) {
+            if (e.lengthComputable) {
+                progressWrapper.style.display = 'block';
+                const percentComplete = Math.round((e.loaded / e.total) * 100);
+                progressBar.style.width = percentComplete + '%';
+                progressText.innerText = `Uploading: ${percentComplete}%`;
+                btn.innerText = `Uploading ${percentComplete}%...`;
+            }
+        };
+
+        // On Complete
+        xhr.onload = function() {
+            if (xhr.status === 200 || xhr.status === 201) {
+                document.querySelector('.container').innerHTML = `
+                    <div style="text-align:center; padding: 40px;">
+                        <h2 style="color: #059669; font-size: 24px;">Thank You!</h2>
+                        <p style="font-size: 18px; margin-top: 10px;">Your submission has been received.</p>
+                    </div>`;
+            } else {
+                alert("Submission failed: " + xhr.responseText);
+                resetUI();
+            }
+        };
+
+        // On Error
+        xhr.onerror = function() {
+            alert("Network Error: Could not connect to server.");
+            resetUI();
+        };
+
+        xhr.send(finalFormData);
+
+        function resetUI() {
+            btn.disabled = false;
+            btn.innerText = "Submit Form";
+            progressWrapper.style.display = 'none';
+            progressBar.style.width = '0%';
+        }
+    });
+</script>
+
+</body>
+</html>

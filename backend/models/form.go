@@ -2,6 +2,7 @@ package models
 
 import (
 	"time"
+
 	"gorm.io/gorm"
 )
 
@@ -14,8 +15,10 @@ type Form struct {
 }
 
 type FormSubmission struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	FormSchemaID uint      `json:"form_schema_id"`
-	Data         string    `gorm:"type:text" json:"data"` // JSON string of answers
-	CreatedAt    time.Time `json:"created_at"`
+	ID           uint   `gorm:"primaryKey" json:"id"`
+	FormSchemaID uint   `json:"form_schema_id"`
+	Data         string `gorm:"type:text" json:"data"` // JSON string of answers
+	// Stores JSON: [{"tagName": "Marketing", "status": "active"}]
+	Tags      string    `gorm:"type:text" json:"tags"`
+	CreatedAt time.Time `json:"created_at"`
 }

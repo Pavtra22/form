@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"time"
 
+	"backend/database"
+	"backend/models"
 	"backend/services"
 
 	"github.com/go-chi/chi/v5"
@@ -90,6 +92,26 @@ func (h *FormHandler) GetForm(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(form)
+}
+
+func (h *FormHandler) UpdateTags(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, _ := strconv.Atoi(idStr)
+
+	var payload struct {
+		Tags []string `json:"tags"`
+	}
+	json.NewDecoder(r.Body).Decode(&payload)
+	tagsJson, _ := json.Marshal(payload.Tags)
+
+	// Direct DB update for simplicity in existing structure
+	// In production, move this to service/repo layers
+	db := database.Connect()
+	if err := db.Model(&models.FormSubmission{}).Where("id = ?", id).Update("tags", string(tagsJson)).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // ServeFormHTML

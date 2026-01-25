@@ -41,13 +41,11 @@ func main() {
 	}))
 
 	// --- FILE SERVER FOR VIDEO UPLOADS ---
-	// This makes the 'uploads' folder publicly accessible
 	workDir, _ := os.Getwd()
 	filesDir := http.Dir(filepath.Join(workDir, "uploads"))
 	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(filesDir)))
-	// -------------------------------------
 
-	// 4. Routes
+	// 4. API Routes
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/forms", handler.CreateForm)
 		r.Get("/forms", handler.GetForms)
@@ -57,10 +55,32 @@ func main() {
 		r.Post("/submit", handler.SubmitForm)
 		r.Get("/forms/{id}/submissions", handler.GetSubmissions)
 		r.Delete("/submissions/{id}", handler.DeleteSubmission)
+		r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFile(w, r, "../dist/index.html")
+		})
+		// Add the tag update route here
+		r.Put("/submissions/{id}/tags", handler.UpdateTags)
 	})
 
+	// 5. Public Form Route (Server Side Rendered)
 	r.Get("/public/forms/{id}", handler.ServeFormHTML)
 
+	// 6. SPA FIX: Serve index.html for any route not caught by API or Public routes
+	// This prevents 404 errors when refreshing pages like /forms or /responses
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		// Verify if the request is for a file (like .js or .css) first
+		path := filepath.Join(workDir, "../dist", r.URL.Path)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			// If file doesn't exist, serve index.html to let React handle routing
+			http.ServeFile(w, r, filepath.Join(workDir, "../dist/index.html"))
+		} else {
+			// If file exists (static assets), serve the file
+			http.ServeFile(w, r, path)
+		}
+	})
+
 	log.Println("Server running on port 8080")
-	http.ListenAndServe(":8080", r)
+	if err := http.ListenAndServe(":8080", r); err != nil {
+		log.Fatal(err)
+	}
 }

@@ -2,10 +2,14 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
+	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"backend/services"
 
@@ -20,7 +24,13 @@ func NewFormHandler(service services.FormService) *FormHandler {
 	return &FormHandler{service: service}
 }
 
-// Helper struct for template
+// Updated Structs for Multi-Page Support
+type FormPage struct {
+	ID       string        `json:"id"`
+	Title    string        `json:"title"`
+	Elements []FormElement `json:"elements"`
+}
+
 type FormElement struct {
 	ID          string `json:"id"`
 	Type        string `json:"type"`
@@ -30,9 +40,9 @@ type FormElement struct {
 }
 
 type TemplateData struct {
-	ID       uint
-	Name     string
-	Elements []FormElement
+	ID    uint
+	Name  string
+	Pages []FormPage // Changed from Elements []FormElement
 }
 
 // CreateForm
@@ -103,24 +113,31 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var elements []FormElement
-	if err := json.Unmarshal([]byte(form.Elements), &elements); err != nil {
-		http.Error(w, "Failed to parse form data", http.StatusInternalServerError)
-		return
+	// Try to unmarshal as Multi-Page
+	var pages []FormPage
+	if err := json.Unmarshal([]byte(form.Elements), &pages); err != nil {
+		// Fallback: Try unmarshalling as old single-page format for backward compatibility
+		var legacyElements []FormElement
+		if err2 := json.Unmarshal([]byte(form.Elements), &legacyElements); err2 == nil {
+			pages = []FormPage{
+				{ID: "default", Title: "Step 1", Elements: legacyElements},
+			}
+		} else {
+			http.Error(w, "Failed to parse form data", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	data := TemplateData{
-		ID:       form.ID,
-		Name:     form.Name,
-		Elements: elements,
+		ID:    form.ID,
+		Name:  form.Name,
+		Pages: pages,
 	}
 
 	// Template path resolution
-	// Try "backend/templates/view_form.html" first (running from root)
 	tmplPath := filepath.Join("backend", "templates", "view_form.html")
 	tmpl, err := template.ParseFiles(tmplPath)
 	if err != nil {
-		// Fallback for running inside backend dir
 		tmpl, err = template.ParseFiles(filepath.Join("templates", "view_form.html"))
 		if err != nil {
 			http.Error(w, "Template error: "+err.Error(), http.StatusInternalServerError)
@@ -132,30 +149,122 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// SubmitForm saves the user's answers to the database
+// SubmitForm handles Multipart requests (JSON data + Video Files)
 func (h *FormHandler) SubmitForm(w http.ResponseWriter, r *http.Request) {
-	type SubmissionRequest struct {
-		FormSchemaID uint   `json:"form_schema_id"`
-		Data         string `json:"data"` // JSON string of answers
-	}
+	// --- LOG START ---
+	requestStart := time.Now()
+	fmt.Println("\n--- [START] New Submission Request ---")
 
-	var req SubmissionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	// 1. Parse Multipart Form
+	err := r.ParseMultipartForm(100 << 20)
+	if err != nil {
+		fmt.Println("Error parsing form:", err)
+		http.Error(w, "File too large or invalid format", http.StatusBadRequest)
+		return
+	}
+	fmt.Printf(">> Upload & Parse Duration: %v\n", time.Since(requestStart))
+
+	// 2. Get Form Schema ID
+	formIDStr := r.FormValue("form_schema_id")
+	formID, err := strconv.Atoi(formIDStr)
+	if err != nil {
+		http.Error(w, "Invalid Form ID", http.StatusBadRequest)
 		return
 	}
 
-	// Call the service to save the submission
-	if err := h.service.SubmitForm(req.FormSchemaID, req.Data); err != nil {
+	// 3. Get the Text Answers
+	jsonData := r.FormValue("data")
+	var answers map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonData), &answers); err != nil {
+		http.Error(w, "Invalid JSON data", http.StatusBadRequest)
+		return
+	}
+
+	// 4. Process Uploaded Files
+	if err := os.MkdirAll("./uploads", os.ModePerm); err != nil {
+		http.Error(w, "Server storage error", http.StatusInternalServerError)
+		return
+	}
+
+	fileProcessStart := time.Now()
+	filesSaved := 0
+
+	// Iterate over all uploaded files
+	for key, fileHeaders := range r.MultipartForm.File {
+		for _, fileHeader := range fileHeaders {
+			filesSaved++
+			singleFileStart := time.Now()
+
+			file, err := fileHeader.Open()
+			if err != nil {
+				continue
+			}
+
+			// Generate unique filename
+			ext := filepath.Ext(fileHeader.Filename)
+			if ext == "" {
+				ext = ".webm"
+			}
+			newFilename := fmt.Sprintf("%d-%s%s", time.Now().Unix(), "video", ext)
+			dstPath := filepath.Join("uploads", newFilename)
+
+			// Save to disk
+			dst, err := os.Create(dstPath)
+			if err != nil {
+				file.Close()
+				fmt.Println("Error creating file:", err)
+				http.Error(w, "Failed to save file", http.StatusInternalServerError)
+				return
+			}
+
+			// Write file
+			writtenBytes, err := io.Copy(dst, file)
+
+			dst.Close()
+			file.Close()
+
+			if err != nil {
+				fmt.Println("Error writing file:", err)
+				continue
+			}
+
+			// Generate Public URL
+			protocol := "http"
+			if r.TLS != nil {
+				protocol = "https"
+			}
+			publicURL := fmt.Sprintf("%s://%s/uploads/%s", protocol, r.Host, newFilename)
+
+			// Save URL to database map
+			answers[key] = publicURL
+
+			fmt.Printf("   -> Saved: %s | Size: %.2f MB | Time: %v\n",
+				newFilename, float64(writtenBytes)/(1024*1024), time.Since(singleFileStart))
+		}
+	}
+
+	fmt.Printf(">> Disk Write Duration (%d files): %v\n", filesSaved, time.Since(fileProcessStart))
+
+	// 6. Save to Database
+	dbStart := time.Now()
+	finalJSON, err := json.Marshal(answers)
+	if err != nil {
+		http.Error(w, "Failed to process submission", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.service.SubmitForm(uint(formID), string(finalJSON)); err != nil {
 		http.Error(w, "Failed to save submission: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	fmt.Printf(">> Database Save Duration: %v\n", time.Since(dbStart))
+	fmt.Printf("--- [DONE] Total Request Duration: %v ---\n", time.Since(requestStart))
 
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Submission saved successfully"})
 }
 
-// GetSubmissions GET /api/forms/{id}/submissions
+// GetSubmissions
 func (h *FormHandler) GetSubmissions(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
@@ -174,7 +283,7 @@ func (h *FormHandler) GetSubmissions(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(submissions)
 }
 
-// DeleteSubmission DELETE /api/submissions/{id}
+// DeleteSubmission
 func (h *FormHandler) DeleteSubmission(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
@@ -192,7 +301,7 @@ func (h *FormHandler) DeleteSubmission(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Submission deleted"})
 }
 
-// NEW: DeleteForm DELETE /api/forms/{id}
+// DeleteForm
 func (h *FormHandler) DeleteForm(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)

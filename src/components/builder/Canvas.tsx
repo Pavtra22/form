@@ -34,7 +34,12 @@ const RenderField = ({ element }: { element: FormElement }) => {
 };
 
 export function Canvas() {
-  const { elements, removeElement, selectedElement, setSelectedElement } = useBuilderStore();
+  const { pages, activePageId, removeElement, selectedElement, setSelectedElement } = useBuilderStore();
+
+  // DERIVE ELEMENTS FROM ACTIVE PAGE
+  // Instead of showing all elements, we find the active page and show its specific elements
+  const activePage = pages.find(p => p.id === activePageId);
+  const elements = activePage ? activePage.elements : [];
 
   return (
     // Clicking the background deselects the current item
@@ -57,6 +62,9 @@ export function Canvas() {
             {elements.length === 0 && (
               <div className="text-center text-gray-400 mt-20 pointer-events-none">
                 <p className="text-lg">Drop components here</p>
+                <p className="text-sm font-medium text-blue-500 mt-2">
+                   Page: {activePage?.title || 'Unknown Page'}
+                </p>
               </div>
             )}
 

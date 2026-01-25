@@ -12,7 +12,7 @@ interface Submission {
 
 interface ParsedSubmission {
   id: number;
-  answers: Record<string, any>;
+  answers: Record<string, string | number | boolean | null>;
   created_at: string;
 }
 

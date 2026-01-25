@@ -1,57 +1,111 @@
 import { create } from 'zustand';
-import type { FormElement } from '../types';
-
-
+import { v4 as uuidv4 } from 'uuid';
+import type { FormElement, FormPage } from '../types';
 
 interface BuilderStore {
-  elements: FormElement[];
+  pages: FormPage[];
+  activePageId: string;
   selectedElement: FormElement | null;
 
+  // Page Actions
+  addPage: () => void;
+  removePage: (id: string) => void;
+  setActivePage: (id: string) => void;
+  updatePageTitle: (id: string, title: string) => void;
+  
+  // Element Actions (Target the Active Page)
   addElement: (index: number, element: FormElement) => void;
   removeElement: (id: string) => void;
   reorderElements: (startIndex: number, endIndex: number) => void;
   setSelectedElement: (element: FormElement | null) => void;
   updateElement: (id: string, updates: Partial<FormElement>) => void;
-  setElements: (elements: FormElement[]) => void; // Useful for loading existing forms
+  setForm: (pages: FormPage[]) => void;
 }
 
+// Initial State helper
+const initialPageId = uuidv4();
+
 export const useBuilderStore = create<BuilderStore>((set) => ({
-  elements: [],
+  pages: [{ id: initialPageId, title: "Page 1", elements: [] }],
+  activePageId: initialPageId,
   selectedElement: null,
 
-  addElement: (index, element) =>
-    set((state) => {
-      const newElements = [...state.elements];
-      newElements.splice(index, 0, element);
-      return { elements: newElements, selectedElement: element };
-    }),
+  // --- PAGE OPERATIONS ---
+  addPage: () => set((state) => {
+    const newPage = { id: uuidv4(), title: `Page ${state.pages.length + 1}`, elements: [] };
+    return { pages: [...state.pages, newPage], activePageId: newPage.id };
+  }),
 
-  removeElement: (id) =>
-    set((state) => ({
-      elements: state.elements.filter((el) => el.id !== id),
-      selectedElement: state.selectedElement?.id === id ? null : state.selectedElement
-    })),
+  removePage: (id) => set((state) => {
+    if (state.pages.length <= 1) return state; // Prevent deleting last page
+    const newPages = state.pages.filter(p => p.id !== id);
+    return { 
+        pages: newPages, 
+        activePageId: state.activePageId === id ? newPages[0].id : state.activePageId 
+    };
+  }),
 
-  reorderElements: (startIndex, endIndex) =>
-    set((state) => {
-      const result = [...state.elements];
-      const [removed] = result.splice(startIndex, 1);
-      result.splice(endIndex, 0, removed);
-      return { elements: result };
-    }),
+  setActivePage: (id) => set({ activePageId: id }),
 
-  setSelectedElement: (element) => set(() => ({ selectedElement: element })),
+  updatePageTitle: (id, title) => set((state) => ({
+    pages: state.pages.map(p => p.id === id ? { ...p, title } : p)
+  })),
 
-  updateElement: (id, updates) =>
-    set((state) => {
-      const newElements = state.elements.map((el) =>
-        el.id === id ? { ...el, ...updates } : el
-      );
-      return {
-        elements: newElements,
-        selectedElement: state.selectedElement?.id === id ? { ...state.selectedElement, ...updates } : state.selectedElement
-      };
-    }),
+  setForm: (pages) => set({ pages, activePageId: pages[0]?.id || "" }),
 
-  setElements: (elements) => set(() => ({ elements })),
+  // --- ELEMENT OPERATIONS (On Active Page) ---
+  addElement: (index, element) => set((state) => {
+    const pageIndex = state.pages.findIndex(p => p.id === state.activePageId);
+    if (pageIndex === -1) return state;
+
+    const newPages = [...state.pages];
+    const newElements = [...newPages[pageIndex].elements];
+    newElements.splice(index, 0, element);
+    newPages[pageIndex] = { ...newPages[pageIndex], elements: newElements };
+    
+    return { pages: newPages, selectedElement: element };
+  }),
+
+  removeElement: (id) => set((state) => {
+    const pageIndex = state.pages.findIndex(p => p.id === state.activePageId);
+    if (pageIndex === -1) return state;
+
+    const newPages = [...state.pages];
+    newPages[pageIndex] = {
+      ...newPages[pageIndex],
+      elements: newPages[pageIndex].elements.filter(el => el.id !== id)
+    };
+    return { pages: newPages, selectedElement: null };
+  }),
+
+  reorderElements: (startIndex, endIndex) => set((state) => {
+    const pageIndex = state.pages.findIndex(p => p.id === state.activePageId);
+    if (pageIndex === -1) return state;
+
+    const newPages = [...state.pages];
+    const newElements = [...newPages[pageIndex].elements];
+    const [removed] = newElements.splice(startIndex, 1);
+    newElements.splice(endIndex, 0, removed);
+    newPages[pageIndex] = { ...newPages[pageIndex], elements: newElements };
+
+    return { pages: newPages };
+  }),
+
+  setSelectedElement: (element) => set({ selectedElement: element }),
+
+  updateElement: (id, updates) => set((state) => {
+    const pageIndex = state.pages.findIndex(p => p.id === state.activePageId);
+    if (pageIndex === -1) return state;
+
+    const newPages = [...state.pages];
+    const newElements = newPages[pageIndex].elements.map(el => 
+      el.id === id ? { ...el, ...updates } : el
+    );
+    newPages[pageIndex] = { ...newPages[pageIndex], elements: newElements };
+
+    return { 
+        pages: newPages, 
+        selectedElement: state.selectedElement?.id === id ? { ...state.selectedElement, ...updates } : state.selectedElement 
+    };
+  }),
 }));

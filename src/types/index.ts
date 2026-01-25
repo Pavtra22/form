@@ -7,3 +7,10 @@ export interface FormElement {
   required: boolean;
   placeholder?: string;
 }
+
+export interface FormPage {
+  id: string;
+  title: string;
+  elements: FormElement[];
+}
+// hii

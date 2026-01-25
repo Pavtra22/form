@@ -42,7 +42,7 @@ type FormElement struct {
 type TemplateData struct {
 	ID    uint
 	Name  string
-	Pages []FormPage // Changed from Elements []FormElement
+	Pages []FormPage
 }
 
 // CreateForm
@@ -113,18 +113,47 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try to unmarshal as Multi-Page
+	// --- ROBUST PARSING LOGIC ---
+	// We first decode into a generic map to inspect the structure
+	var raw []map[string]interface{}
+	if err := json.Unmarshal([]byte(form.Elements), &raw); err != nil {
+		http.Error(w, "JSON Parse Error", http.StatusInternalServerError)
+		return
+	}
+
 	var pages []FormPage
-	if err := json.Unmarshal([]byte(form.Elements), &pages); err != nil {
-		// Fallback: Try unmarshalling as old single-page format for backward compatibility
-		var legacyElements []FormElement
-		if err2 := json.Unmarshal([]byte(form.Elements), &legacyElements); err2 == nil {
-			pages = []FormPage{
-				{ID: "default", Title: "Step 1", Elements: legacyElements},
-			}
-		} else {
-			http.Error(w, "Failed to parse form data", http.StatusInternalServerError)
+
+	// Heuristic: If the first item has an "elements" key, it's a Page.
+	// If it has "type" or "label" but NO "elements", it's a legacy Element.
+	isMultiPage := false
+	if len(raw) > 0 {
+		if _, ok := raw[0]["elements"]; ok {
+			isMultiPage = true
+		}
+	} else {
+		// Empty form, treat as multi-page with 0 pages
+		isMultiPage = true
+	}
+
+	if isMultiPage {
+		if err := json.Unmarshal([]byte(form.Elements), &pages); err != nil {
+			http.Error(w, "Failed to parse pages", http.StatusInternalServerError)
 			return
+		}
+	} else {
+		// Fallback: It's a legacy flat list of elements
+		var legacyElements []FormElement
+		if err := json.Unmarshal([]byte(form.Elements), &legacyElements); err != nil {
+			http.Error(w, "Failed to parse legacy elements", http.StatusInternalServerError)
+			return
+		}
+		// Wrap in a default page
+		pages = []FormPage{
+			{
+				ID:       "default-page",
+				Title:    "Form",
+				Elements: legacyElements,
+			},
 		}
 	}
 
@@ -134,11 +163,20 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 		Pages: pages,
 	}
 
-	// Template path resolution
+	// Define helper functions for the template
+	funcMap := template.FuncMap{
+		"add": func(a, b int) int {
+			return a + b
+		},
+	}
+
 	tmplPath := filepath.Join("backend", "templates", "view_form.html")
-	tmpl, err := template.ParseFiles(tmplPath)
+	// Parse with FuncMap
+	tmpl, err := template.New("view_form.html").Funcs(funcMap).ParseFiles(tmplPath)
+
+	// Fallback path logic if first path fails (e.g. running from different dir)
 	if err != nil {
-		tmpl, err = template.ParseFiles(filepath.Join("templates", "view_form.html"))
+		tmpl, err = template.New("view_form.html").Funcs(funcMap).ParseFiles(filepath.Join("templates", "view_form.html"))
 		if err != nil {
 			http.Error(w, "Template error: "+err.Error(), http.StatusInternalServerError)
 			return

@@ -100,7 +100,7 @@ export function Builder() {
   // --- Data Logic ---
   const saveMutation = useMutation({
     mutationFn: async (newForm: { name: string; elements: string }) => {
-      // Note: We are sending 'pages' JSON string as 'elements' field
+      // CHANGE: Use relative path /api/forms. The Vite proxy sends this to port 8080.
       return axios.post('/api/forms', newForm);
     },
     onSuccess: () => {

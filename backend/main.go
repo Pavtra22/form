@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"backend/database"
 	"backend/handlers"
@@ -28,15 +30,21 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	// CORS Configuration - Using wildcard '*' for development debugging
+	// CORS Configuration (STRICT MODE)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"},
+		// Explicitly list your frontend URL. Wildcard "*" does NOT work with AllowCredentials
+		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
+
+	// --- Serve Uploads Folder ---
+	workDir, _ := os.Getwd()
+	filesDir := http.Dir(filepath.Join(workDir, "uploads"))
+	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(filesDir)))
 
 	// 4. Routes
 	r.Route("/api", func(r chi.Router) {
@@ -46,6 +54,7 @@ func main() {
 		r.Delete("/forms/{id}", handler.DeleteForm)
 
 		r.Post("/submit", handler.SubmitForm)
+
 		r.Get("/forms/{id}/submissions", handler.GetSubmissions)
 		r.Delete("/submissions/{id}", handler.DeleteSubmission)
 	})

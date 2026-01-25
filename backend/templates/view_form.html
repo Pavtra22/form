@@ -32,7 +32,7 @@
         label { display: block; font-weight: 600; margin-bottom: 8px; color: #374151; font-size: 16px; }
         .required { color: #dc2626; margin-left: 4px; }
         
-        /* Inputs: 16px font prevents iOS zoom */
+        /* Inputs */
         input[type="text"], input[type="email"], input[type="tel"], input[type="date"], textarea, select {
             width: 100%; 
             padding: 12px; 
@@ -46,34 +46,6 @@
         }
         input:focus, textarea:focus, select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
         
-        button[type="submit"] {
-            width: 100%; 
-            background-color: #2563eb; 
-            color: white; 
-            font-weight: 600; 
-            padding: 14px; 
-            border: none; 
-            border-radius: 8px; 
-            cursor: pointer; 
-            font-size: 16px; 
-            transition: background 0.2s;
-            margin-top: 10px;
-        }
-        button[type="submit"]:active { background-color: #1d4ed8; transform: scale(0.98); }
-        
-        /* Star Rating */
-        .stars { display: flex; gap: 8px; flex-wrap: wrap; }
-        .star { 
-            font-size: 32px; 
-            cursor: pointer; 
-            color: #d1d5db; 
-            background: none; 
-            border: none; 
-            padding: 0; 
-            line-height: 1;
-        }
-        .star.active { color: #facc15; }
-
         /* Video Recorder */
         .video-container { 
             border: 2px dashed #d1d5db; 
@@ -105,6 +77,71 @@
             font-weight: 500;
         }
         .video-btn.stop { background: #374151; }
+
+        /* Star Rating */
+        .stars { display: flex; gap: 8px; flex-wrap: wrap; }
+        .star { 
+            font-size: 32px; 
+            cursor: pointer; 
+            color: #d1d5db; 
+            background: none; 
+            border: none; 
+            padding: 0; 
+            line-height: 1;
+        }
+        .star.active { color: #facc15; }
+
+        /* Progress Bar */
+        .progress-wrapper {
+            display: none;
+            margin-top: 20px;
+            width: 100%;
+            background-color: #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            width: 0%;
+            height: 10px;
+            background-color: #2563eb;
+            transition: width 0.2s;
+        }
+        .progress-text {
+            text-align: center;
+            font-size: 14px;
+            color: #374151;
+            margin-top: 5px;
+        }
+
+        /* Multi-Page Navigation */
+        .form-step { display: none; animation: fadeIn 0.3s; }
+        .form-step.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .btn-group { display: flex; justify-content: space-between; margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 20px; }
+        .btn-primary { 
+            background-color: #2563eb; 
+            color: white; 
+            font-weight: 600; 
+            padding: 12px 24px; 
+            border: none; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-size: 16px; 
+            transition: background 0.2s; 
+        }
+        .btn-primary:hover { background-color: #1d4ed8; }
+        .btn-secondary { 
+            background-color: #9ca3af; 
+            color: white; 
+            padding: 12px 24px; 
+            border: none; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-size: 16px; 
+            transition: background 0.2s; 
+        }
+        .btn-secondary:hover { background-color: #6b7280; }
     </style>
 </head>
 <body>
@@ -112,64 +149,146 @@
 <div class="container">
     <h1>{{ .Name }}</h1>
     <form id="mainForm">
-        {{ range .Elements }}
-        <div class="form-group">
-            <label>
-                {{ .Label }} 
-                {{ if .Required }}<span class="required">*</span>{{ end }}
-            </label>
+        <!-- Range Over Pages -->
+        {{ range $index, $page := .Pages }}
+        <!-- Added explicit 'active' check for first page as fallback -->
+        <div class="form-step {{ if eq $index 0 }}active{{ end }}" id="step-{{ $index }}">
+            <h3 style="margin-bottom: 20px; color: #4b5563; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">
+                {{ $page.Title }} <span style="font-size: 12px; float: right; font-weight: normal;">Step {{ add $index 1 }} of {{ len $.Pages }}</span>
+            </h3>
+            
+            {{ range $page.Elements }}
+                <div class="form-group">
+                    <label>
+                        {{ .Label }} 
+                        {{ if .Required }}<span class="required">*</span>{{ end }}
+                    </label>
 
-            {{ if eq .Type "text" }}
-                <input type="text" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
-            {{ else if eq .Type "email" }}
-                <input type="email" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
-            {{ else if eq .Type "phone" }}
-                <input type="tel" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
-            {{ else if eq .Type "date" }}
-                <input type="date" name="{{ .Label }}" {{ if .Required }}required{{ end }}>
-            {{ else if eq .Type "textarea" }}
-                <textarea name="{{ .Label }}" rows="4" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}></textarea>
-            {{ else if eq .Type "select" }}
-                <select name="{{ .Label }}" {{ if .Required }}required{{ end }}>
-                    <option value="" disabled selected>Select an option</option>
-                    <option value="Option 1">Option 1</option>
-                    <option value="Option 2">Option 2</option>
-                </select>
-            {{ else if eq .Type "stars" }}
-                <div class="stars" id="stars-{{ .ID }}">
-                    <input type="hidden" name="{{ .Label }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
-                    <button type="button" class="star" onclick="setRating('{{ .ID }}', 1)">★</button>
-                    <button type="button" class="star" onclick="setRating('{{ .ID }}', 2)">★</button>
-                    <button type="button" class="star" onclick="setRating('{{ .ID }}', 3)">★</button>
-                    <button type="button" class="star" onclick="setRating('{{ .ID }}', 4)">★</button>
-                    <button type="button" class="star" onclick="setRating('{{ .ID }}', 5)">★</button>
-                </div>
-            {{ else if eq .Type "video" }}
-                <div class="video-container" id="video-wrapper-{{ .ID }}">
-                    <input type="hidden" name="{{ .Label }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
-                    
-                    <video id="preview-{{ .ID }}" autoplay muted playsinline></video>
-                    <video id="playback-{{ .ID }}" controls playsinline></video>
-                    
-                    <div style="margin-top: 10px;">
-                        <button type="button" id="btn-start-{{ .ID }}" class="video-btn" onclick="startRecording('{{ .ID }}')">
-                            <span style="font-size: 18px;">●</span> Start Recording
-                        </button>
-                        <button type="button" id="btn-stop-{{ .ID }}" class="video-btn stop" onclick="stopRecording('{{ .ID }}')" style="display:none;">
-                            ■ Stop Recording
-                        </button>
-                    </div>
-                    <p id="status-{{ .ID }}" style="font-size: 12px; color: #6b7280; margin-top: 8px;">Ready to record</p>
+                    {{ if eq .Type "text" }}
+                        <input type="text" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
+                    {{ else if eq .Type "email" }}
+                        <input type="email" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
+                    {{ else if eq .Type "phone" }}
+                        <input type="tel" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
+                    {{ else if eq .Type "date" }}
+                        <input type="date" name="{{ .Label }}" {{ if .Required }}required{{ end }}>
+                    {{ else if eq .Type "textarea" }}
+                        <textarea name="{{ .Label }}" rows="4" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}></textarea>
+                    {{ else if eq .Type "select" }}
+                        <select name="{{ .Label }}" {{ if .Required }}required{{ end }}>
+                            <option value="" disabled selected>Select an option</option>
+                            <option value="Option 1">Option 1</option>
+                            <option value="Option 2">Option 2</option>
+                        </select>
+                    {{ else if eq .Type "stars" }}
+                        <div class="stars" id="stars-{{ .ID }}">
+                            <input type="hidden" name="{{ .Label }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
+                            <button type="button" class="star" onclick="setRating('{{ .ID }}', 1)">★</button>
+                            <button type="button" class="star" onclick="setRating('{{ .ID }}', 2)">★</button>
+                            <button type="button" class="star" onclick="setRating('{{ .ID }}', 3)">★</button>
+                            <button type="button" class="star" onclick="setRating('{{ .ID }}', 4)">★</button>
+                            <button type="button" class="star" onclick="setRating('{{ .ID }}', 5)">★</button>
+                        </div>
+                    {{ else if eq .Type "video" }}
+                        <div class="video-container" id="video-wrapper-{{ .ID }}">
+                            <input type="hidden" name="{{ .Label }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
+                            
+                            <video id="preview-{{ .ID }}" autoplay muted playsinline></video>
+                            <video id="playback-{{ .ID }}" controls playsinline></video>
+                            
+                            <div style="margin-top: 10px;">
+                                <button type="button" id="btn-start-{{ .ID }}" class="video-btn" onclick="startRecording('{{ .ID }}')">
+                                    <span style="font-size: 18px;">●</span> Start Recording
+                                </button>
+                                <button type="button" id="btn-stop-{{ .ID }}" class="video-btn stop" onclick="stopRecording('{{ .ID }}')" style="display:none;">
+                                    ■ Stop Recording
+                                </button>
+                            </div>
+                            <p id="status-{{ .ID }}" style="font-size: 12px; color: #6b7280; margin-top: 8px;">Ready to record</p>
+                        </div>
+                    {{ end }}
                 </div>
             {{ end }}
         </div>
         {{ end }}
 
-        <button type="submit" id="submitBtn">Submit Form</button>
+        <!-- Progress Bar -->
+        <div class="progress-wrapper" id="uploadProgress">
+            <div class="progress-bar" id="progressBar"></div>
+            <p class="progress-text" id="progressText">Uploading: 0%</p>
+        </div>
+
+        <!-- Navigation Buttons -->
+        <div class="btn-group">
+            <button type="button" id="prevBtn" class="btn-secondary" onclick="changeStep(-1)">Back</button>
+            <button type="button" id="nextBtn" class="btn-primary" onclick="changeStep(1)">Next</button>
+            <button type="submit" id="submitBtn" class="btn-primary" style="display:none;">Submit Form</button>
+        </div>
     </form>
 </div>
 
 <script>
+    // --- STEP NAVIGATION LOGIC ---
+    let currentStep = 0;
+    const steps = document.querySelectorAll('.form-step');
+    const totalSteps = steps.length;
+
+    function showStep(n) {
+        // If no steps (empty form), do nothing to prevent errors
+        if (totalSteps === 0) return;
+
+        steps.forEach((step, index) => {
+            step.classList.toggle('active', index === n);
+        });
+
+        // Button Logic
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const submitBtn = document.getElementById('submitBtn');
+
+        if (prevBtn) prevBtn.style.display = n === 0 ? 'none' : 'inline-block';
+        
+        if (n === totalSteps - 1) {
+            if (nextBtn) nextBtn.style.display = 'none';
+            if (submitBtn) submitBtn.style.display = 'inline-block';
+        } else {
+            if (nextBtn) {
+                nextBtn.style.display = 'inline-block';
+                nextBtn.innerHTML = "Next";
+            }
+            if (submitBtn) submitBtn.style.display = 'none';
+        }
+    }
+
+    function changeStep(n) {
+        // Validate current step before moving forward
+        if (n === 1 && !validateStep(currentStep)) return;
+
+        currentStep += n;
+        showStep(currentStep);
+    }
+
+    function validateStep(n) {
+        if (totalSteps === 0) return true;
+        const activeStep = steps[n];
+        if (!activeStep) return true;
+
+        const inputs = activeStep.querySelectorAll('input, select, textarea');
+        let valid = true;
+        
+        inputs.forEach(input => {
+            if (input.hasAttribute('required') && !input.value.trim()) {
+                input.style.borderColor = "red";
+                // Shake effect or scroll to first error could be added here
+                valid = false;
+            } else {
+                input.style.borderColor = "#d1d5db";
+            }
+        });
+        return valid;
+    }
+
+    // --- STAR RATING LOGIC ---
     function setRating(id, value) {
         document.getElementById('input-' + id).value = value;
         const container = document.getElementById('stars-' + id);
@@ -179,12 +298,17 @@
         });
     }
 
+    // --- VIDEO RECORDING LOGIC ---
     let recorders = {};
     let chunks = {};
+    let finalBlobs = {}; 
+    let recordedTypes = {}; 
 
     async function startRecording(id) {
         try {
-            // Use front camera
+            finalBlobs[id] = null;
+            chunks[id] = [];
+
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { facingMode: "user" }, 
                 audio: true 
@@ -195,12 +319,7 @@
             document.getElementById('playback-' + id).style.display = 'none';
             preview.srcObject = stream;
 
-            // Robust MIME type detection
-            const mimeTypes = [
-                'video/webm;codecs=vp8,opus',
-                'video/webm',
-                'video/mp4'
-            ];
+            const mimeTypes = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
             let selectedMimeType = '';
             for (const type of mimeTypes) {
                 if (MediaRecorder.isTypeSupported(type)) {
@@ -208,12 +327,10 @@
                     break;
                 }
             }
-            // If empty, let browser choose default
             const options = selectedMimeType ? { mimeType: selectedMimeType } : undefined;
             const mediaRecorder = new MediaRecorder(stream, options);
             
             recorders[id] = mediaRecorder;
-            chunks[id] = [];
 
             mediaRecorder.ondataavailable = (e) => {
                 if (e.data.size > 0) chunks[id].push(e.data);
@@ -223,11 +340,10 @@
                 const blobType = selectedMimeType || 'video/webm';
                 const blob = new Blob(chunks[id], { type: blobType });
                 
-                const reader = new FileReader();
-                reader.readAsDataURL(blob);
-                reader.onloadend = () => {
-                    document.getElementById('input-' + id).value = reader.result;
-                };
+                finalBlobs[id] = blob;
+                recordedTypes[id] = blobType;
+
+                document.getElementById('input-' + id).value = "[VIDEO_ATTACHED]";
 
                 preview.style.display = 'none';
                 const playback = document.getElementById('playback-' + id);
@@ -259,48 +375,102 @@
         }
     }
 
+    // --- FORM SUBMISSION LOGIC ---
     document.getElementById('mainForm').addEventListener('submit', async function(e) {
         e.preventDefault();
+        
+        // Safety Check
+        for (const id in recorders) {
+            if (recorders[id].state === 'recording') {
+                alert("Please stop recording before submitting.");
+                return;
+            }
+        }
+
         const btn = document.getElementById('submitBtn');
+        const progressWrapper = document.getElementById('uploadProgress');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+
         btn.disabled = true;
-        btn.innerText = "Submitting...";
-
-        const formData = new FormData(this);
-        const data = {};
-        formData.forEach((value, key) => data[key] = value);
-
+        btn.innerText = "Preparing...";
+        
         const pathParts = window.location.pathname.split('/');
         const formId = parseInt(pathParts[pathParts.length - 1]);
 
-        try {
-            // Using relative path handles both localhost and IP-based access
-            const response = await fetch('/api/submit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    form_schema_id: formId,
-                    data: JSON.stringify(data)
-                })
-            });
+        // Prepare Data
+        const formDataObj = new FormData(this);
+        const textData = {};
+        formDataObj.forEach((value, key) => {
+             textData[key] = value;
+        });
 
-            if (response.ok) {
+        const finalFormData = new FormData();
+        finalFormData.append('form_schema_id', formId);
+        finalFormData.append('data', JSON.stringify(textData));
+
+        // Append Videos (FIXED for UUIDs)
+        document.querySelectorAll('.video-container').forEach(container => {
+            const input = container.querySelector('input[type="hidden"]');
+            
+            if (input) {
+                const id = input.id.replace('input-', '');
+                const label = input.name; 
+
+                if (finalBlobs[id]) {
+                    const mime = recordedTypes[id] || '';
+                    const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+                    const filename = `video-${Date.now()}.${ext}`;
+                    finalFormData.append(label, finalBlobs[id], filename);
+                }
+            }
+        });
+
+        // Send via XMLHttpRequest
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/submit', true);
+
+        xhr.upload.onprogress = function(e) {
+            if (e.lengthComputable) {
+                progressWrapper.style.display = 'block';
+                const percentComplete = Math.round((e.loaded / e.total) * 100);
+                progressBar.style.width = percentComplete + '%';
+                progressText.innerText = `Uploading: ${percentComplete}%`;
+                btn.innerText = `Uploading ${percentComplete}%...`;
+            }
+        };
+
+        xhr.onload = function() {
+            if (xhr.status === 200 || xhr.status === 201) {
                 document.querySelector('.container').innerHTML = `
                     <div style="text-align:center; padding: 40px;">
                         <h2 style="color: #059669; font-size: 24px;">Thank You!</h2>
                         <p style="font-size: 18px; margin-top: 10px;">Your submission has been received.</p>
                     </div>`;
             } else {
-                alert("Submission failed. Please try again.");
-                btn.disabled = false;
-                btn.innerText = "Submit Form";
+                alert("Submission failed: " + xhr.responseText);
+                resetUI();
             }
-        } catch (err) {
-            console.error(err);
-            alert("Error connecting to server.");
+        };
+
+        xhr.onerror = function() {
+            alert("Network Error: Could not connect to server.");
+            resetUI();
+        };
+
+        xhr.send(finalFormData);
+
+        function resetUI() {
             btn.disabled = false;
+            btn.innerText = "Submit Form";
+            progressWrapper.style.display = 'none';
+            progressBar.style.width = '0%';
         }
     });
+
+    // Initialize first step
+    showStep(0);
 </script>
 
 </body>
-</html>s
+</html>

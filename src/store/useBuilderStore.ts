@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { FormElement, FormPage } from '../types';
+import type { FormElement, FormPage, PageLogic } from '../types';
 
 interface BuilderStore {
   pages: FormPage[];
@@ -13,6 +13,10 @@ interface BuilderStore {
   setActivePage: (id: string) => void;
   updatePageTitle: (id: string, title: string) => void;
   
+  // Logic Actions
+  addCondition: (pageId: string, condition: PageLogic) => void;
+  removeCondition: (pageId: string, conditionId: string) => void;
+
   // Element Actions (Target the Active Page)
   addElement: (index: number, element: FormElement) => void;
   removeElement: (id: string) => void;
@@ -50,6 +54,25 @@ export const useBuilderStore = create<BuilderStore>((set) => ({
   updatePageTitle: (id, title) => set((state) => ({
     pages: state.pages.map(p => p.id === id ? { ...p, title } : p)
   })),
+
+  // --- LOGIC OPERATIONS ---
+  addCondition: (pageId, condition) => set((state) => {
+    const newPages = state.pages.map(p => {
+      if (p.id !== pageId) return p;
+      const existingConditions = p.conditions || [];
+      return { ...p, conditions: [...existingConditions, condition] };
+    });
+    return { pages: newPages };
+  }),
+
+  removeCondition: (pageId, conditionId) => set((state) => {
+    const newPages = state.pages.map(p => {
+      if (p.id !== pageId) return p;
+      const existingConditions = p.conditions || [];
+      return { ...p, conditions: existingConditions.filter(c => c.id !== conditionId) };
+    });
+    return { pages: newPages };
+  }),
 
   setForm: (pages) => set({ pages, activePageId: pages[0]?.id || "" }),
 

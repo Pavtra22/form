@@ -18,9 +18,20 @@ const RenderField = ({ element }: { element: FormElement }) => {
       return <textarea className={baseClass} rows={3} placeholder={placeholder || "Long answer text"} readOnly />;
     case 'select':
       return (
-        <div className="w-full p-2 border border-gray-300 rounded mt-1 bg-gray-50 text-gray-500">
-          Dropdown options...
-        </div>
+        <select className="w-full p-2 border border-gray-300 rounded mt-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 pointer-events-none">
+          <option value="" disabled selected>Select an option</option>
+          {element.options && element.options.length > 0 ? (
+            element.options.map((opt, idx) => (
+              <option key={idx} value={opt}>{opt}</option>
+            ))
+          ) : (
+            <>
+              <option>Option 1</option>
+              <option>Option 2</option>
+              <option>Option 3</option>
+            </>
+          )}
+        </select>
       );
     case 'date':
       return <input type="date" className={baseClass} readOnly />;

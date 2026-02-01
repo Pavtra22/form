@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import { v4 as uuidv4 } from 'uuid';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useParams } from '@tanstack/react-router';
 import { useMutation } from '@tanstack/react-query';
 import axios from 'axios';
 import { Eye, EyeOff, Save, Home, Loader2, Plus, Trash2, FileText } from 'lucide-react';
@@ -13,7 +13,7 @@ import { PreviewPanel } from '../components/builder/PreviewPanel';
 import { Resizer } from '../components/builder/Resizer';
 import { TOOLS } from '../components/builder/tools';
 import { useBuilderStore } from '../store/useBuilderStore';
-import type { ElementType } from '../types';
+import type { ElementType, FormPage, FormElement } from '../types';
 import { generateFormHTML } from '../utils/formHtmlGenerator';
 
 export function Builder() {
@@ -25,17 +25,68 @@ export function Builder() {
       setActivePage, 
       addPage, 
       removePage,
-      updatePageTitle 
+      updatePageTitle,
+      setForm
   } = useBuilderStore();
   
+  // Try to get formId from URL params (if editing)
+  const params = useParams({ strict: false });
+  const formId = params.formId;
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formName, setFormName] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  // Initialize loading state based on whether we have a formId
+  const [isLoading, setIsLoading] = useState(!!formId);
   
   const [widths, setWidths] = useState({ sidebar: 250, props: 300, preview: 400 });
   const resizingRef = useRef<string | null>(null);
   const navigate = useNavigate();
+
+  // --- Load Form Data for Editing ---
+  useEffect(() => {
+    if (!formId) return;
+
+    const fetchForm = async () => {
+        try {
+            // We can set loading here if we didn't init it to true, 
+            // but setting it in useState initial value is cleaner.
+            // If re-fetching, we might want: setIsLoading(true);
+            
+            const res = await axios.get(`/api/forms/${formId}`);
+            const data = res.data;
+            setFormName(data.name);
+            
+            // Robust parsing of elements/pages
+            const raw = JSON.parse(data.elements);
+            let loadedPages: FormPage[] = [];
+
+            // Heuristic: Check if it's new MultiPage or Legacy format
+            if (Array.isArray(raw) && raw.length > 0 && raw[0].elements) {
+                loadedPages = raw;
+            } else if (Array.isArray(raw)) {
+                // Legacy support: Wrap flat elements in a page
+                loadedPages = [{ 
+                    id: uuidv4(), 
+                    title: 'Step 1', 
+                    elements: raw as FormElement[] 
+                }];
+            } else {
+                // Default empty
+                loadedPages = [{ id: uuidv4(), title: 'Step 1', elements: [] }];
+            }
+            
+            setForm(loadedPages);
+        } catch (e) {
+            console.error("Failed to parse form elements", e);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    fetchForm();
+  }, [formId, setForm]);
 
   // --- Resizing Logic ---
   const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -97,11 +148,16 @@ export function Builder() {
     document.body.style.userSelect = 'none';
   };
 
-  // --- Data Logic ---
+  // --- Save Logic ---
   const saveMutation = useMutation({
     mutationFn: async (newForm: { name: string; elements: string }) => {
-      // CHANGE: Use relative path /api/forms. The Vite proxy sends this to port 8080.
-      return axios.post('/api/forms', newForm);
+      if (formId) {
+          // UPDATE existing form
+          return axios.put(`/api/forms/${formId}`, newForm);
+      } else {
+          // CREATE new form
+          return axios.post('/api/forms', newForm);
+      }
     },
     onSuccess: () => {
       setIsModalOpen(false);
@@ -123,11 +179,9 @@ export function Builder() {
     const { source, destination } = result;
     if (!destination) return;
     
-    // Reorder within active page
     if (source.droppableId === 'CANVAS' && destination.droppableId === 'CANVAS') {
       reorderElements(source.index, destination.index);
     }
-    // Add new element to active page
     if (source.droppableId === 'SIDEBAR' && destination.droppableId === 'CANVAS') {
       const tool = TOOLS[source.index];
       addElement(destination.index, {
@@ -142,6 +196,17 @@ export function Builder() {
 
   const previewSrc = generateFormHTML(formName || "Preview Form", pages);
 
+  if (isLoading) {
+      return (
+          <div className="flex h-screen w-full items-center justify-center bg-gray-50">
+              <div className="text-center">
+                  <Loader2 size={32} className="animate-spin text-blue-600 mx-auto mb-2" />
+                  <p className="text-gray-600">Loading form...</p>
+              </div>
+          </div>
+      );
+  }
+
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="flex h-screen w-full flex-col bg-gray-50 overflow-hidden">
@@ -149,7 +214,9 @@ export function Builder() {
         {/* Header */}
         <header className="flex items-center justify-between border-b px-6 py-3 bg-white shadow-sm z-30 shrink-0 h-16">
             <div className="flex items-center gap-4">
-                <h1 className="text-xl font-bold text-gray-800">Form Builder</h1>
+                <h1 className="text-xl font-bold text-gray-800">
+                    {formId ? 'Edit Form' : 'New Form'}
+                </h1>
                 <input 
                     type="text" value={formName} onChange={e => setFormName(e.target.value)}
                     placeholder="Form Name" className="border rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-64"
@@ -168,7 +235,7 @@ export function Builder() {
 
                 <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
                     {saveMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                    {saveMutation.isPending ? "Saving..." : "Save"}
+                    {saveMutation.isPending ? "Saving..." : (formId ? "Update" : "Save")}
                 </button>
             </div>
         </header>
@@ -251,12 +318,18 @@ export function Builder() {
         {isModalOpen && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                 <div className="bg-white p-6 rounded-lg shadow-xl w-96">
-                    <h2 className="text-lg font-bold mb-4">Confirm Save</h2>
-                    <p className="mb-4 text-gray-600">Are you ready to save <strong>{formName || "Untitled Form"}</strong>?</p>
+                    <h2 className="text-lg font-bold mb-4">
+                        Confirm {formId ? 'Update' : 'Save'}
+                    </h2>
+                    <p className="mb-4 text-gray-600">
+                        {formId 
+                            ? <span>Update existing form <strong>{formName}</strong>?</span> 
+                            : <span>Create new form <strong>{formName || "Untitled Form"}</strong>?</span>}
+                    </p>
                     <div className="flex justify-end gap-2">
                         <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
                         <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-                            Confirm Save
+                            Confirm
                         </button>
                     </div>
                 </div>

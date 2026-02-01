@@ -165,24 +165,28 @@
                     </label>
 
                     {{ if eq .Type "text" }}
-                        <input type="text" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
+                        <input type="text" name="{{ .ID }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
                     {{ else if eq .Type "email" }}
-                        <input type="email" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
+                        <input type="email" name="{{ .ID }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
                     {{ else if eq .Type "phone" }}
-                        <input type="tel" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
+                        <input type="tel" name="{{ .ID }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
                     {{ else if eq .Type "date" }}
-                        <input type="date" name="{{ .Label }}" {{ if .Required }}required{{ end }}>
+                        <input type="date" name="{{ .ID }}" {{ if .Required }}required{{ end }}>
                     {{ else if eq .Type "textarea" }}
-                        <textarea name="{{ .Label }}" rows="4" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}></textarea>
+                        <textarea name="{{ .ID }}" rows="4" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}></textarea>
                     {{ else if eq .Type "select" }}
-                        <select name="{{ .Label }}" {{ if .Required }}required{{ end }}>
+                        <select name="{{ .ID }}" {{ if .Required }}required{{ end }}>
                             <option value="" disabled selected>Select an option</option>
-                            <option value="Option 1">Option 1</option>
-                            <option value="Option 2">Option 2</option>
+                            {{ range .Options }}
+                                <option value="{{ . }}">{{ . }}</option>
+                            {{ else }}
+                                <option value="Option 1">Option 1</option>
+                                <option value="Option 2">Option 2</option>
+                            {{ end }}
                         </select>
                     {{ else if eq .Type "stars" }}
                         <div class="stars" id="stars-{{ .ID }}">
-                            <input type="hidden" name="{{ .Label }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
+                            <input type="hidden" name="{{ .ID }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
                             <button type="button" class="star" onclick="setRating('{{ .ID }}', 1)">★</button>
                             <button type="button" class="star" onclick="setRating('{{ .ID }}', 2)">★</button>
                             <button type="button" class="star" onclick="setRating('{{ .ID }}', 3)">★</button>
@@ -191,7 +195,7 @@
                         </div>
                     {{ else if eq .Type "video" }}
                         <div class="video-container" id="video-wrapper-{{ .ID }}">
-                            <input type="hidden" name="{{ .Label }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
+                            <input type="hidden" name="{{ .ID }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
                             
                             <video id="preview-{{ .ID }}" autoplay muted playsinline></video>
                             <video id="playback-{{ .ID }}" controls playsinline></video>
@@ -414,14 +418,17 @@
             const input = container.querySelector('input[type="hidden"]');
             
             if (input) {
-                const id = input.id.replace('input-', '');
-                const label = input.name; 
-
-                if (finalBlobs[id]) {
-                    const mime = recordedTypes[id] || '';
+                // The input ID usually has "input-" prefix if using helper ID generation, 
+                // but here name is set to ID. Let's use the NAME from the hidden input which is the UUID.
+                const uuid = input.name; 
+                // The video recording logic uses IDs like "input-{uuid}" for DOM manipulation
+                // So we need to ensure we grab the right blob based on the UUID
+                
+                if (finalBlobs[uuid]) {
+                    const mime = recordedTypes[uuid] || '';
                     const ext = mime.includes('mp4') ? 'mp4' : 'webm';
                     const filename = `video-${Date.now()}.${ext}`;
-                    finalFormData.append(label, finalBlobs[id], filename);
+                    finalFormData.append(uuid, finalBlobs[uuid], filename);
                 }
             }
         });

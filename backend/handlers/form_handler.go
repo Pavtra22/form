@@ -32,11 +32,12 @@ type FormPage struct {
 }
 
 type FormElement struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	Label       string `json:"label"`
-	Required    bool   `json:"required"`
-	Placeholder string `json:"placeholder"`
+	ID          string   `json:"id"`
+	Type        string   `json:"type"`
+	Label       string   `json:"label"`
+	Required    bool     `json:"required"`
+	Placeholder string   `json:"placeholder"`
+	Options     []string `json:"options"` // Added Options field
 }
 
 type TemplateData struct {
@@ -58,6 +59,35 @@ func (h *FormHandler) CreateForm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	form, err := h.service.CreateForm(req.Name, req.Elements)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(form)
+}
+
+// NEW: UpdateForm
+func (h *FormHandler) UpdateForm(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	type Request struct {
+		Name     string `json:"name"`
+		Elements string `json:"elements"`
+	}
+	var req Request
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	form, err := h.service.UpdateForm(uint(id), req.Name, req.Elements)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -114,7 +144,6 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// --- ROBUST PARSING LOGIC ---
-	// We first decode into a generic map to inspect the structure
 	var raw []map[string]interface{}
 	if err := json.Unmarshal([]byte(form.Elements), &raw); err != nil {
 		http.Error(w, "JSON Parse Error", http.StatusInternalServerError)
@@ -122,16 +151,12 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var pages []FormPage
-
-	// Heuristic: If the first item has an "elements" key, it's a Page.
-	// If it has "type" or "label" but NO "elements", it's a legacy Element.
 	isMultiPage := false
 	if len(raw) > 0 {
 		if _, ok := raw[0]["elements"]; ok {
 			isMultiPage = true
 		}
 	} else {
-		// Empty form, treat as multi-page with 0 pages
 		isMultiPage = true
 	}
 
@@ -141,13 +166,11 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		// Fallback: It's a legacy flat list of elements
 		var legacyElements []FormElement
 		if err := json.Unmarshal([]byte(form.Elements), &legacyElements); err != nil {
 			http.Error(w, "Failed to parse legacy elements", http.StatusInternalServerError)
 			return
 		}
-		// Wrap in a default page
 		pages = []FormPage{
 			{
 				ID:       "default-page",
@@ -163,7 +186,6 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 		Pages: pages,
 	}
 
-	// Define helper functions for the template
 	funcMap := template.FuncMap{
 		"add": func(a, b int) int {
 			return a + b
@@ -171,10 +193,8 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tmplPath := filepath.Join("backend", "templates", "view_form.html")
-	// Parse with FuncMap
 	tmpl, err := template.New("view_form.html").Funcs(funcMap).ParseFiles(tmplPath)
 
-	// Fallback path logic if first path fails (e.g. running from different dir)
 	if err != nil {
 		tmpl, err = template.New("view_form.html").Funcs(funcMap).ParseFiles(filepath.Join("templates", "view_form.html"))
 		if err != nil {

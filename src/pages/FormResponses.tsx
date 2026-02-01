@@ -1,8 +1,8 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { Loader2, ArrowLeft, Video, Calendar, Download, Trash2, FileSpreadsheet } from 'lucide-react';
-import { formResponsesRoute } from '../router';
+import { useParams, useNavigate } from '@tanstack/react-router';
+import { Loader2, ArrowLeft, Download, FileText} from 'lucide-react';
+import type { FormPage, FormElement } from '../types';
 
 interface Submission {
   id: number;
@@ -10,191 +10,187 @@ interface Submission {
   created_at: string;
 }
 
-interface ParsedSubmission {
-  id: number;
-  answers: Record<string, string | number | boolean | null>;
-  created_at: string;
+interface FormDefinition {
+    id: number;
+    name: string;
+    elements: string; // JSON string of pages
 }
 
 export function FormResponses() {
-  const { formId } = formResponsesRoute.useParams();
-  const queryClient = useQueryClient();
+  const { formId } = useParams({ strict: false });
+  const navigate = useNavigate();
 
-  // 1. Fetch Submissions
-  const { data: submissions, isLoading } = useQuery({
+  // 1. Fetch Form Definition (To map IDs to Labels)
+  const { data: formDef, isLoading: isLoadingForm } = useQuery({
+      queryKey: ['form', formId],
+      queryFn: async () => {
+          const res = await axios.get<FormDefinition>(`/api/forms/${formId}`);
+          return res.data;
+      }
+  });
+
+  // 2. Fetch Submissions
+  const { data: submissions, isLoading: isLoadingSubs } = useQuery({
     queryKey: ['submissions', formId],
     queryFn: async () => {
-      const res = await axios.get(`http://localhost:8080/api/forms/${formId}/submissions`);
-      // Parse the JSON data string for each submission
-      return res.data.map((sub: Submission) => ({
-        ...sub,
-        answers: JSON.parse(sub.data),
-      })) as ParsedSubmission[];
-    },
+      const res = await axios.get<Submission[]>(`/api/forms/${formId}/submissions`);
+      return res.data;
+    }
   });
 
-  // 2. Delete Mutation
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await axios.delete(`http://localhost:8080/api/submissions/${id}`);
-    },
-    onSuccess: () => {
-      // Refresh the list after deletion
-      queryClient.invalidateQueries({ queryKey: ['submissions', formId] });
-    },
-    onError: () => alert("Failed to delete submission")
-  });
-
-  // 3. Export to CSV Logic
-  const handleExport = () => {
-    if (!submissions || submissions.length === 0) return;
-
-    // Get all unique question keys
-    const allKeys = Array.from(new Set(submissions.flatMap(s => Object.keys(s.answers))));
-    
-    // Create Header Row
-    const headers = ['ID', 'Submitted At', ...allKeys];
-    
-    // Create Data Rows
-    const rows = submissions.map(sub => {
-      const date = new Date(sub.created_at).toLocaleString();
-      const answerValues = allKeys.map(key => {
-        const val = sub.answers[key];
-        // If it's a string with a comma, wrap in quotes to avoid breaking CSV
-        const safeVal = String(val || '').replace(/"/g, '""'); 
-        return `"${safeVal}"`;
-      });
-      return [sub.id, `"${date}"`, ...answerValues].join(',');
-    });
-
-    // Combine and Download
-    const csvContent = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `form-${formId}-responses.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  if (isLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        <Loader2 className="animate-spin text-blue-600" size={32} />
-      </div>
-    );
+  if (isLoadingForm || isLoadingSubs) {
+    return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={32} /></div>;
   }
 
-  const allKeys = Array.from(new Set(submissions?.flatMap(s => Object.keys(s.answers)) || []));
+  // --- Helper: Build ID -> Label Map ---
+  const idToLabelMap = new Map<string, string>();
+  
+  if (formDef?.elements) {
+      try {
+          const rawElements = JSON.parse(formDef.elements);
+          // Handle both legacy flat array and new multi-page format
+          let allElements: FormElement[] = [];
+          
+          if (Array.isArray(rawElements) && rawElements.length > 0 && rawElements[0].elements) {
+              // Multi-page: flatten all pages to get all elements
+              (rawElements as FormPage[]).forEach(page => {
+                  allElements.push(...page.elements);
+              });
+          } else if (Array.isArray(rawElements)) {
+              // Legacy flat array
+              allElements = rawElements as FormElement[];
+          }
+
+          allElements.forEach(el => {
+              idToLabelMap.set(el.id, el.label);
+          });
+      } catch (e) {
+          console.error("Error parsing form definition for labels", e);
+      }
+  }
+
+  // 3. Parse Data & Extract Columns
+  const parsedSubmissions = submissions?.map(sub => {
+    try {
+      return {
+        ...sub,
+        parsedData: JSON.parse(sub.data) as Record<string, string | number | boolean | null | React.ReactNode>,
+      };
+    } catch (e) {
+      console.error("Failed to parse submission data", sub.id, e);
+      return { ...sub, parsedData: {} };
+    }
+  }) || [];
+
+  // Collect all unique keys from all submissions
+  const allKeys = new Set<string>();
+  parsedSubmissions.forEach(sub => {
+    Object.keys(sub.parsedData).forEach(key => allKeys.add(key));
+  });
+  
+  // Convert Set to Array and Sort nicely (maybe put unknown keys at the end)
+  const columns = Array.from(allKeys);
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
-            <Link to="/forms" className="text-gray-500 hover:text-gray-800 transition">
-              <ArrowLeft size={24} />
-            </Link>
+            <button 
+              onClick={() => navigate({ to: '/forms' })}
+              className="p-2 hover:bg-gray-200 rounded-full transition"
+            >
+              <ArrowLeft size={24} className="text-gray-600" />
+            </button>
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">Form Responses</h1>
-              <p className="text-gray-500 text-sm mt-1">{submissions?.length || 0} total submissions</p>
+              <h1 className="text-2xl font-bold text-gray-800">Form Responses</h1>
+              <p className="text-sm text-gray-500">
+                  Form: <span className="font-semibold">{formDef?.name}</span> • {parsedSubmissions.length} submissions
+              </p>
             </div>
           </div>
-
+          
           <button 
-            onClick={handleExport}
-            disabled={!submissions || submissions.length === 0}
-            className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
+            className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
+            onClick={() => alert("Export feature coming soon!")}
           >
-            <FileSpreadsheet size={20} />
-            Export CSV
+            <Download size={18} /> Export CSV
           </button>
         </div>
 
-        {/* Table Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-gray-600">
-              <thead className="bg-gray-50 text-gray-700 uppercase font-bold text-xs border-b">
-                <tr>
-                  <th className="px-6 py-4 w-20">ID</th>
-                  <th className="px-6 py-4 w-48">Submitted At</th>
-                  {allKeys.map(key => (
-                    <th key={key} className="px-6 py-4 min-w-[150px]">
-                      {key}
-                    </th>
-                  ))}
-                  <th className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {submissions?.length === 0 ? (
+        {parsedSubmissions.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-sm border border-dashed border-gray-300 p-12 text-center">
+            <div className="mx-auto w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                <FileText className="text-gray-400" />
+            </div>
+            <h3 className="text-gray-900 font-medium">No responses yet</h3>
+            <p className="text-gray-500 text-sm mt-1">Share your form link to start collecting data.</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <td colSpan={allKeys.length + 3} className="px-6 py-12 text-center text-gray-400">
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
-                            <Download size={24} className="opacity-50"/>
-                        </div>
-                        <p>No submissions yet.</p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  submissions?.map((sub) => (
-                    <tr key={sub.id} className="hover:bg-gray-50 transition group">
-                      <td className="px-6 py-4 font-mono text-xs text-gray-400">#{sub.id}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2 text-gray-700">
-                           <Calendar size={14} className="text-gray-400"/>
-                           {new Date(sub.created_at).toLocaleString()}
-                        </div>
-                      </td>
-                      {allKeys.map((key) => {
-                        const val = sub.answers[key];
-                        // Check if value looks like a video URL
-                        const isVideo = typeof val === 'string' && (val.includes('/uploads/') || val.startsWith('http'));
+                    <th className="px-6 py-4 font-semibold text-gray-700 whitespace-nowrap w-20 bg-gray-50/50 sticky left-0 z-10 border-r">#</th>
+                    <th className="px-6 py-4 font-semibold text-gray-700 whitespace-nowrap w-40 border-r">Date</th>
+                    {columns.map(key => {
+                        // Resolve Label: If key matches an ID, show Label. Else show Key (Legacy/Deleted).
+                        const label = idToLabelMap.get(key) || key;
+                        const isUnknown = !idToLabelMap.has(key);
 
                         return (
-                          <td key={key} className="px-6 py-4 max-w-xs truncate">
-                            {isVideo ? (
-                              <a 
-                                href={val} 
-                                target="_blank" 
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 bg-blue-50 px-3 py-1.5 rounded-md text-xs font-medium transition border border-blue-100"
-                              >
-                                <Video size={14} /> Watch Video
-                              </a>
-                            ) : (
-                              <span className="text-gray-700" title={String(val)}>{String(val)}</span>
-                            )}
+                            <th key={key} className="px-6 py-4 font-semibold text-gray-700 whitespace-nowrap min-w-[150px]">
+                                <div className="flex flex-col">
+                                    <span>{label}</span>
+                                    {/* Optional: Show raw ID/Key if it doesn't match current form, for debugging/legacy clarity */}
+                                    {isUnknown && <span className="text-[10px] text-gray-400 font-mono font-normal">Legacy / Deleted: {key.substring(0,8)}...</span>}
+                                </div>
+                            </th>
+                        );
+                    })}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {parsedSubmissions.map((sub, idx) => (
+                    <tr key={sub.id} className="hover:bg-gray-50/50 transition">
+                      <td className="px-6 py-4 text-gray-500 sticky left-0 bg-white border-r">{parsedSubmissions.length - idx}</td>
+                      <td className="px-6 py-4 text-gray-500 whitespace-nowrap border-r">
+                        {new Date(sub.created_at).toLocaleString()}
+                      </td>
+                      {columns.map(col => {
+                        const val = sub.parsedData[col];
+                        let displayVal = val;
+
+                        // Video Logic
+                        if (typeof val === 'string' && (val.endsWith('.webm') || val.endsWith('.mp4') || val.includes('/uploads/'))) {
+                            displayVal = (
+                                <a 
+                                    href={val} 
+                                    target="_blank" 
+                                    rel="noreferrer" 
+                                    className="text-blue-600 underline hover:text-blue-800 flex items-center gap-1"
+                                >
+                                    View Video ↗
+                                </a>
+                            );
+                        } else if (typeof val === 'object') {
+                            displayVal = JSON.stringify(val);
+                        }
+
+                        return (
+                          <td key={col} className="px-6 py-4 text-gray-800">
+                            {displayVal || <span className="text-gray-300 italic">-</span>}
                           </td>
                         );
                       })}
-                      <td className="px-6 py-4 text-right">
-                        <button 
-                            onClick={() => {
-                                if(confirm('Are you sure you want to delete this submission?')) {
-                                    deleteMutation.mutate(sub.id);
-                                }
-                            }}
-                            className="text-gray-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition opacity-0 group-hover:opacity-100"
-                            title="Delete Submission"
-                        >
-                            <Trash2 size={16} />
-                        </button>
-                      </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

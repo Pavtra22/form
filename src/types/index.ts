@@ -1,5 +1,4 @@
 export type ElementType = 'text' | 'email' | 'phone' | 'textarea' | 'date' | 'select' | 'stars' | 'video';
-
 export interface FormElement {
   id: string; 
   type: ElementType;

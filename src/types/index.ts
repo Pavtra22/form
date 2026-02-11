@@ -1,4 +1,4 @@
-export type ElementType = 'text' | 'email' | 'phone' | 'textarea' | 'date' | 'select' | 'stars' | 'video';
+export type ElementType = 'text' | 'email' | 'phone' | 'textarea' | 'date' | 'select' | 'stars' | 'video' | 'hidden';
 
 export interface FormElement {
   id: string; 
@@ -9,19 +9,25 @@ export interface FormElement {
   options?: string[]; // For select dropdowns
 }
 
-export type LogicOperator = 'equals' | 'not_equals' | 'greater_than' | 'less_than';
+export type ConditionOperator = 'equals' | 'not_equals' | 'greater_than' | 'less_than';
 
-export interface PageLogic {
-  id: string;             // Unique ID for the rule
+export interface LogicCondition {
+  id: string;
   triggerElementId: string;
-  operator: LogicOperator;
+  operator: ConditionOperator;
   value: string;
+}
+
+export interface LogicRule {
+  id: string;
   targetPageId: string;
+  matchType: 'AND' | 'OR'; // Match ALL (AND) or ANY (OR) of the conditions
+  conditions: LogicCondition[];
 }
 
 export interface FormPage {
   id: string;
   title: string;
   elements: FormElement[];
-  conditions?: PageLogic[]; // NEW: Logic rules for this page
-}
+  logicRules?: LogicRule[]; // Replaces the simple 'conditions' array
+} 

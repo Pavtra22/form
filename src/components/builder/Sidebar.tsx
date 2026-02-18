@@ -1,46 +1,67 @@
 import { Droppable, Draggable } from '@hello-pangea/dnd';
 import { TOOLS } from './tools';
+import { useBuilderStore } from '../../store/useBuilderStore';
+
 export function Sidebar() {
+  // We use the store to ensure the sidebar stays in sync with the active state
+  const { activePageId } = useBuilderStore();
+
   return (
-    <div className="bg-white border-r border-gray-200 flex flex-col h-full">
-      <div className="p-4 border-b bg-gray-50">
-        <h2 className="font-bold text-gray-700">Components</h2>
-        <p className="text-xs text-gray-500">Drag to canvas</p>
+    <div className="bg-white border-b border-gray-200 flex items-center h-14 px-4 w-full shadow-sm">
+      <div className="flex items-center gap-2 mr-6 border-r pr-4 border-gray-200">
+        <h2 className="font-bold text-gray-700 text-xs uppercase tracking-widest">
+          Component Tools
+        </h2>
       </div>
 
-      <Droppable droppableId="SIDEBAR" isDropDisabled={true}>
-        {(provided) => (
+      {/* Note: isDropDisabled={true} prevents elements from being 
+          dropped BACK into the toolbar. 
+      */}
+      <Droppable 
+        droppableId="SIDEBAR" 
+        isDropDisabled={true} 
+        direction="horizontal"
+      >
+        {(provided, snapshot) => (
           <div
             {...provided.droppableProps}
             ref={provided.innerRef}
-            className="flex-1 overflow-y-auto p-3 space-y-3"
+            className={`flex items-center gap-3 transition-colors ${
+              snapshot.isDraggingOver ? 'bg-gray-50' : ''
+            }`}
           >
             {TOOLS.map((tool, index) => (
-              <Draggable key={tool.id} draggableId={tool.id} index={index}>
+              <Draggable 
+                key={tool.id} 
+                draggableId={tool.id} 
+                index={index}
+              >
                 {(provided, snapshot) => (
-                  <>
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      {...provided.dragHandleProps}
-                      style={{ ...provided.draggableProps.style }}
-                      className={`
-                        flex items-center gap-3 p-3 rounded-lg border cursor-grab transition-all
-                        ${snapshot.isDragging ? 'bg-blue-50 border-blue-500 shadow-lg' : 'bg-white border-gray-200 hover:border-blue-400'}
-                      `}
-                    >
-                      <tool.icon className="w-4 h-4 text-gray-500" />
-                      <span className="text-sm font-medium text-gray-700">{tool.label}</span>
-                    </div>
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.draggableProps}
+                    {...provided.dragHandleProps}
+                    title={tool.label}
+                    className={`
+                      p-2.5 rounded-lg border flex items-center justify-center cursor-grab transition-all
+                      ${snapshot.isDragging 
+                        ? 'bg-blue-600 border-blue-600 shadow-xl scale-110 z-[100]' 
+                        : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50 hover:shadow-sm'}
+                    `}
+                  >
+                    <tool.icon 
+                      className={`w-5 h-5 ${
+                        snapshot.isDragging ? 'text-white' : 'text-gray-600'
+                      }`} 
+                    />
                     
-                    {/* Clone to keep list looking full while dragging */}
+                    {/* Optional: Show label only when dragging for clarity */}
                     {snapshot.isDragging && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 opacity-50">
-                         <tool.icon className="w-4 h-4 text-gray-400" />
-                         <span className="text-sm font-medium text-gray-400">{tool.label}</span>
-                      </div>
+                      <span className="ml-2 text-xs font-bold text-white whitespace-nowrap">
+                        {tool.label}
+                      </span>
                     )}
-                  </>
+                  </div>
                 )}
               </Draggable>
             ))}
@@ -48,6 +69,15 @@ export function Sidebar() {
           </div>
         )}
       </Droppable>
+
+      <div className="ml-auto flex items-center gap-2">
+        <span className="text-[10px] font-bold text-gray-400 uppercase">
+          Targeting:
+        </span>
+        <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">
+           Page ID: {activePageId.split('-')[0]}...
+        </span>
+      </div>
     </div>
   );
 }

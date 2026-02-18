@@ -1,12 +1,16 @@
 import { Droppable, Draggable } from '@hello-pangea/dnd';
 import { useBuilderStore } from '../../store/useBuilderStore';
-import { Trash2, GripVertical } from 'lucide-react';
+import { Trash2, GripVertical, ChevronDown, ChevronRight, PlusCircle, FileText } from 'lucide-react';
+import { useState } from 'react';
 import type { FormElement } from '../../types';
 import { VideoRecorder } from '../form-elements/VideoRecorder';
 
-// Helper component to render specific form inputs
+/**
+ * Helper component to render specific form inputs in a read-only preview state.
+ * Prevents input interaction during the design process to avoid interfering with drag-and-drop.
+ */
 const RenderField = ({ element }: { element: FormElement }) => {
-  const baseClass = "w-full p-2 border border-gray-300 rounded mt-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 pointer-events-none"; // pointer-events-none prevents inputs from stealing focus during drag
+  const baseClass = "w-full p-2 border border-gray-300 rounded mt-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 pointer-events-none"; 
   const placeholder = element.placeholder || "";
 
   switch (element.type) {
@@ -45,98 +49,172 @@ const RenderField = ({ element }: { element: FormElement }) => {
 };
 
 export function Canvas() {
-  const { pages, activePageId, removeElement, selectedElement, setSelectedElement } = useBuilderStore();
+  const { 
+    pages, 
+    removeElement, 
+    selectedElement, 
+    setSelectedElement, 
+    removePage, 
+    updatePageTitle, 
+    addPage 
+  } = useBuilderStore();
 
-  // DERIVE ELEMENTS FROM ACTIVE PAGE
-  // Instead of showing all elements, we find the active page and show its specific elements
-  const activePage = pages.find(p => p.id === activePageId);
-  const elements = activePage ? activePage.elements : [];
+  // State to manage which page accordions are expanded
+  const [expandedPages, setExpandedPages] = useState<string[]>(pages.map(p => p.id));
+
+  /**
+   * Toggles the visibility of a page's content accordion.
+   */
+  const togglePage = (id: string) => {
+    setExpandedPages(prev => 
+      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+    );
+  };
 
   return (
-    // Clicking the background deselects the current item
     <div 
-      className="flex-1 bg-gray-100 p-8 h-full overflow-y-auto" 
+      className="flex-1 bg-gray-50 p-8 h-full overflow-y-auto" 
       onClick={() => setSelectedElement(null)}
     >
-      <Droppable droppableId="CANVAS">
-        {(provided, snapshot) => (
+      {/* Outer Droppable for reordering the pages themselves */}
+      <Droppable droppableId="CANVAS_PAGES" type="PAGE">
+        {(provided) => (
           <div
-            ref={provided.innerRef}
             {...provided.droppableProps}
-            className={`
-              max-w-2xl mx-auto min-h-[600px] p-8 rounded-xl shadow-sm border-2 border-dashed transition-colors pb-32
-              ${snapshot.isDraggingOver ? 'bg-blue-50 border-blue-400' : 'bg-white border-gray-300'}
-            `}
-            // Prevent deselecting when clicking inside the white canvas box
-            onClick={(e) => e.stopPropagation()} 
+            ref={provided.innerRef}
+            className="max-w-3xl mx-auto space-y-6 pb-40"
           >
-            {elements.length === 0 && (
-              <div className="text-center text-gray-400 mt-20 pointer-events-none">
-                <p className="text-lg">Drop components here</p>
-                <p className="text-sm font-medium text-blue-500 mt-2">
-                   Page: {activePage?.title || 'Unknown Page'}
-                </p>
-              </div>
-            )}
-
-            {elements.map((el, index) => (
-              <Draggable key={el.id} draggableId={el.id} index={index}>
-                {(provided, snapshot) => {
-                   const isSelected = selectedElement?.id === el.id;
-                   return (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      style={{ ...provided.draggableProps.style }}
-                      onClick={(e) => {
-                        e.stopPropagation(); // Stop click from bubbling to parent
-                        setSelectedElement(el);
-                      }}
-                      className={`
-                        relative group mb-4 p-4 rounded-lg border bg-white transition-all cursor-pointer
-                        ${isSelected ? 'ring-2 ring-blue-500 border-transparent shadow-md' : 'border-gray-200 hover:border-blue-300'}
-                        ${snapshot.isDragging ? 'shadow-xl ring-2 ring-blue-500 z-50 opacity-90' : ''}
-                      `}
+            {pages.map((page, pageIndex) => (
+              <Draggable key={page.id} draggableId={page.id} index={pageIndex}>
+                {(provided, snapshot) => (
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.draggableProps}
+                    className={`bg-white border rounded-xl shadow-sm overflow-hidden transition-shadow ${
+                      snapshot.isDragging ? 'shadow-2xl ring-2 ring-blue-400' : 'border-gray-200'
+                    }`}
+                  >
+                    {/* Page Accordion Header and Drag Handle */}
+                    <div 
+                      className="flex items-center justify-between p-4 bg-gray-50 border-b group cursor-pointer"
+                      onClick={() => togglePage(page.id)}
                     >
-                      <div className="flex justify-between items-center mb-2">
-                          <div className="flex items-center gap-2">
-                             {/* Drag Handle - Only this icon initiates drag */}
-                             <div 
-                               {...provided.dragHandleProps} 
-                               className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
-                             >
-                               <GripVertical size={16} />
-                             </div>
-                             
-                             <label className="text-sm font-medium text-gray-700">
-                               {el.label}
-                               {el.required && <span className="text-red-500 ml-1">*</span>}
-                             </label>
-                          </div>
-                          
-                          {/* Delete Button - Visible on hover or selection */}
-                          <button 
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                removeElement(el.id);
-                            }} 
-                            className={`text-gray-400 hover:text-red-500 transition-opacity p-1 rounded hover:bg-red-50
-                              ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
-                            `}
-                          >
-                              <Trash2 size={16} />
-                          </button>
+                      <div className="flex items-center gap-3 flex-1">
+                        <div 
+                          {...provided.dragHandleProps} 
+                          className="text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing p-1"
+                          onClick={(e) => e.stopPropagation()} // Stop accordion toggle when dragging
+                        >
+                          <GripVertical size={20} />
+                        </div>
+                        
+                        <div className="text-blue-500">
+                          {expandedPages.includes(page.id) ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
+                           <FileText size={16} className="text-gray-400" />
+                           <input 
+                              type="text"
+                              value={page.title}
+                              onChange={(e) => updatePageTitle(page.id, e.target.value)}
+                              className="bg-transparent font-bold text-gray-700 border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none px-1 transition-colors w-full"
+                           />
+                        </div>
                       </div>
-                      
-                      <div className="pl-8">
-                        <RenderField element={el} />
-                      </div>
+
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removePage(page.id);
+                        }}
+                        className="text-gray-400 hover:text-red-500 p-2 rounded hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                        title="Delete Page"
+                      >
+                        <Trash2 size={18} />
+                      </button>
                     </div>
-                   );
-                }}
+
+                    {/* Accordion Body: Droppable area for form elements within this specific page */}
+                    {expandedPages.includes(page.id) && (
+                      <Droppable droppableId={page.id} type="ELEMENT">
+                        {(elemProvided, elemSnapshot) => (
+                          <div
+                            ref={elemProvided.innerRef}
+                            {...elemProvided.droppableProps}
+                            className={`p-6 min-h-[150px] transition-colors ${
+                              elemSnapshot.isDraggingOver ? 'bg-blue-50/50' : 'bg-white'
+                            }`}
+                          >
+                            {page.elements.length === 0 && (
+                              <div className="text-center py-10 border-2 border-dashed border-gray-200 rounded-lg text-gray-400">
+                                <p>Drag components here</p>
+                              </div>
+                            )}
+
+                            {page.elements.map((el, elIndex) => (
+                              <Draggable key={el.id} draggableId={el.id} index={elIndex}>
+                                {(elProvided, elSnapshot) => {
+                                  const isSelected = selectedElement?.id === el.id;
+                                  return (
+                                    <div
+                                      ref={elProvided.innerRef}
+                                      {...elProvided.draggableProps}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedElement(el);
+                                      }}
+                                      className={`
+                                        relative group mb-4 p-4 rounded-lg border bg-white transition-all cursor-pointer
+                                        ${isSelected ? 'ring-2 ring-blue-500 border-transparent shadow-md' : 'border-gray-200 hover:border-blue-300'}
+                                        ${elSnapshot.isDragging ? 'shadow-xl ring-2 ring-blue-500 z-50' : ''}
+                                      `}
+                                    >
+                                      <div className="flex justify-between items-center mb-2">
+                                        <div className="flex items-center gap-2">
+                                          <div 
+                                            {...elProvided.dragHandleProps} 
+                                            className="text-gray-300 hover:text-gray-500 p-1 cursor-grab"
+                                          >
+                                            <GripVertical size={14} />
+                                          </div>
+                                          <label className="text-sm font-medium text-gray-700">
+                                            {el.label} {el.required && <span className="text-red-500">*</span>}
+                                          </label>
+                                        </div>
+                                        <button 
+                                          onClick={(e) => { e.stopPropagation(); removeElement(el.id); }}
+                                          className="text-gray-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                          title="Remove Element"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </div>
+                                      <div className="pl-6"><RenderField element={el} /></div>
+                                    </div>
+                                  );
+                                }}
+                              </Draggable>
+                            ))}
+                            {elemProvided.placeholder}
+                          </div>
+                        )}
+                      </Droppable>
+                    )}
+                  </div>
+                )}
               </Draggable>
             ))}
             {provided.placeholder}
+
+            {/* Global Add Page Button */}
+            <button
+              onClick={addPage}
+              className="w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-400 hover:text-blue-500 hover:border-blue-400 hover:bg-blue-50 transition-all flex items-center justify-center gap-2 font-medium"
+            >
+              <PlusCircle size={20} />
+              <span>Add New Page</span>
+            </button>
           </div>
         )}
       </Droppable>

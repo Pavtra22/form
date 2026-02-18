@@ -12,6 +12,7 @@ interface BuilderStore {
   removePage: (id: string) => void;
   setActivePage: (id: string) => void;
   updatePageTitle: (id: string, title: string) => void;
+  reorderPages: (startIndex: number, endIndex: number) => void;
   
   // Logic Rule Actions
   addLogicRule: (pageId: string, rule: LogicRule) => void;
@@ -23,9 +24,9 @@ interface BuilderStore {
   removeConditionFromRule: (pageId: string, ruleId: string, conditionId: string) => void;
 
   // Element Actions
-  addElement: (index: number, element: FormElement) => void;
+  addElement: (index: number, element: FormElement, pageId?: string) => void;
   removeElement: (id: string) => void;
-  reorderElements: (startIndex: number, endIndex: number) => void;
+  reorderElements: (startIndex: number, endIndex: number, pageId?: string) => void;
   setSelectedElement: (element: FormElement | null) => void;
   updateElement: (id: string, updates: Partial<FormElement>) => void;
   setForm: (pages: FormPage[]) => void;
@@ -58,6 +59,13 @@ export const useBuilderStore = create<BuilderStore>((set) => ({
   updatePageTitle: (id, title) => set((state) => ({
     pages: state.pages.map(p => p.id === id ? { ...p, title } : p)
   })),
+
+  reorderPages: (startIndex, endIndex) => set((state) => {
+    const newPages = [...state.pages];
+    const [removed] = newPages.splice(startIndex, 1);
+    newPages.splice(endIndex, 0, removed);
+    return { pages: newPages };
+  }),
 
   // --- LOGIC RULES ---
   addLogicRule: (pageId, rule) => set((state) => ({
@@ -113,51 +121,62 @@ export const useBuilderStore = create<BuilderStore>((set) => ({
   setForm: (pages) => set({ pages, activePageId: pages[0]?.id || "" }),
 
   // --- ELEMENT OPERATIONS ---
-  addElement: (index, element) => set((state) => {
-    const pageIndex = state.pages.findIndex(p => p.id === state.activePageId);
+  addElement: (index, element, pageId) => set((state) => {
+    // If pageId is provided, use it; otherwise fallback to activePageId
+    const targetPageId = pageId || state.activePageId;
+    const pageIndex = state.pages.findIndex(p => p.id === targetPageId);
     if (pageIndex === -1) return state;
+    
     const newPages = [...state.pages];
     const newElements = [...newPages[pageIndex].elements];
     newElements.splice(index, 0, element);
     newPages[pageIndex] = { ...newPages[pageIndex], elements: newElements };
-    return { pages: newPages, selectedElement: element };
+    
+    return { 
+      pages: newPages, 
+      selectedElement: element,
+      activePageId: targetPageId // Ensure the page with new element becomes active
+    };
   }),
 
   removeElement: (id) => set((state) => {
-    const pageIndex = state.pages.findIndex(p => p.id === state.activePageId);
-    if (pageIndex === -1) return state;
-    const newPages = [...state.pages];
-    newPages[pageIndex] = {
-      ...newPages[pageIndex],
-      elements: newPages[pageIndex].elements.filter(el => el.id !== id)
-    };
+    const newPages = state.pages.map(page => ({
+      ...page,
+      elements: page.elements.filter(el => el.id !== id)
+    }));
     return { pages: newPages, selectedElement: null };
   }),
 
-  reorderElements: (startIndex, endIndex) => set((state) => {
-    const pageIndex = state.pages.findIndex(p => p.id === state.activePageId);
+  reorderElements: (startIndex, endIndex, pageId) => set((state) => {
+    const targetPageId = pageId || state.activePageId;
+    const pageIndex = state.pages.findIndex(p => p.id === targetPageId);
     if (pageIndex === -1) return state;
+
     const newPages = [...state.pages];
     const newElements = [...newPages[pageIndex].elements];
     const [removed] = newElements.splice(startIndex, 1);
     newElements.splice(endIndex, 0, removed);
     newPages[pageIndex] = { ...newPages[pageIndex], elements: newElements };
+    
     return { pages: newPages };
   }),
 
   setSelectedElement: (element) => set({ selectedElement: element }),
 
   updateElement: (id, updates) => set((state) => {
-    const pageIndex = state.pages.findIndex(p => p.id === state.activePageId);
-    if (pageIndex === -1) return state;
-    const newPages = [...state.pages];
-    const newElements = newPages[pageIndex].elements.map(el => 
-      el.id === id ? { ...el, ...updates } : el
-    );
-    newPages[pageIndex] = { ...newPages[pageIndex], elements: newElements };
+    const newPages = state.pages.map(page => ({
+      ...page,
+      elements: page.elements.map(el => el.id === id ? { ...el, ...updates } : el)
+    }));
+
+    // Also update selectedElement if it's the one being modified
+    const updatedSelected = state.selectedElement?.id === id 
+      ? { ...state.selectedElement, ...updates } 
+      : state.selectedElement;
+
     return { 
         pages: newPages, 
-        selectedElement: state.selectedElement?.id === id ? { ...state.selectedElement, ...updates } : state.selectedElement 
+        selectedElement: updatedSelected
     };
   }),
 }));

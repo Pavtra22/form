@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { FormElement, FormPage, PageLogic } from '../types';
+import type { FormElement, FormPage, LogicRule, LogicCondition } from '../types';
 
 interface BuilderStore {
   pages: FormPage[];
@@ -13,11 +13,16 @@ interface BuilderStore {
   setActivePage: (id: string) => void;
   updatePageTitle: (id: string, title: string) => void;
   
-  // Logic Actions
-  addCondition: (pageId: string, condition: PageLogic) => void;
-  removeCondition: (pageId: string, conditionId: string) => void;
+  // Logic Rule Actions
+  addLogicRule: (pageId: string, rule: LogicRule) => void;
+  updateLogicRule: (pageId: string, ruleId: string, updates: Partial<LogicRule>) => void;
+  removeLogicRule: (pageId: string, ruleId: string) => void;
+  
+  // Condition Actions (within a rule)
+  addConditionToRule: (pageId: string, ruleId: string, condition: LogicCondition) => void;
+  removeConditionFromRule: (pageId: string, ruleId: string, conditionId: string) => void;
 
-  // Element Actions (Target the Active Page)
+  // Element Actions
   addElement: (index: number, element: FormElement) => void;
   removeElement: (id: string) => void;
   reorderElements: (startIndex: number, endIndex: number) => void;
@@ -26,7 +31,6 @@ interface BuilderStore {
   setForm: (pages: FormPage[]) => void;
 }
 
-// Initial State helper
 const initialPageId = uuidv4();
 
 export const useBuilderStore = create<BuilderStore>((set) => ({
@@ -41,7 +45,7 @@ export const useBuilderStore = create<BuilderStore>((set) => ({
   }),
 
   removePage: (id) => set((state) => {
-    if (state.pages.length <= 1) return state; // Prevent deleting last page
+    if (state.pages.length <= 1) return state;
     const newPages = state.pages.filter(p => p.id !== id);
     return { 
         pages: newPages, 
@@ -55,44 +59,73 @@ export const useBuilderStore = create<BuilderStore>((set) => ({
     pages: state.pages.map(p => p.id === id ? { ...p, title } : p)
   })),
 
-  // --- LOGIC OPERATIONS ---
-  addCondition: (pageId, condition) => set((state) => {
-    const newPages = state.pages.map(p => {
+  // --- LOGIC RULES ---
+  addLogicRule: (pageId, rule) => set((state) => ({
+    pages: state.pages.map(p => {
       if (p.id !== pageId) return p;
-      const existingConditions = p.conditions || [];
-      return { ...p, conditions: [...existingConditions, condition] };
-    });
-    return { pages: newPages };
-  }),
+      return { ...p, logicRules: [...(p.logicRules || []), rule] };
+    })
+  })),
 
-  removeCondition: (pageId, conditionId) => set((state) => {
-    const newPages = state.pages.map(p => {
+  updateLogicRule: (pageId, ruleId, updates) => set((state) => ({
+    pages: state.pages.map(p => {
       if (p.id !== pageId) return p;
-      const existingConditions = p.conditions || [];
-      return { ...p, conditions: existingConditions.filter(c => c.id !== conditionId) };
-    });
-    return { pages: newPages };
-  }),
+      return {
+        ...p,
+        logicRules: (p.logicRules || []).map(r => r.id === ruleId ? { ...r, ...updates } : r)
+      };
+    })
+  })),
+
+  removeLogicRule: (pageId, ruleId) => set((state) => ({
+    pages: state.pages.map(p => {
+      if (p.id !== pageId) return p;
+      return { ...p, logicRules: (p.logicRules || []).filter(r => r.id !== ruleId) };
+    })
+  })),
+
+  addConditionToRule: (pageId, ruleId, condition) => set((state) => ({
+    pages: state.pages.map(p => {
+      if (p.id !== pageId) return p;
+      return {
+        ...p,
+        logicRules: (p.logicRules || []).map(r => {
+          if (r.id !== ruleId) return r;
+          return { ...r, conditions: [...r.conditions, condition] };
+        })
+      };
+    })
+  })),
+
+  removeConditionFromRule: (pageId, ruleId, conditionId) => set((state) => ({
+    pages: state.pages.map(p => {
+      if (p.id !== pageId) return p;
+      return {
+        ...p,
+        logicRules: (p.logicRules || []).map(r => {
+          if (r.id !== ruleId) return r;
+          return { ...r, conditions: r.conditions.filter(c => c.id !== conditionId) };
+        })
+      };
+    })
+  })),
 
   setForm: (pages) => set({ pages, activePageId: pages[0]?.id || "" }),
 
-  // --- ELEMENT OPERATIONS (On Active Page) ---
+  // --- ELEMENT OPERATIONS ---
   addElement: (index, element) => set((state) => {
     const pageIndex = state.pages.findIndex(p => p.id === state.activePageId);
     if (pageIndex === -1) return state;
-
     const newPages = [...state.pages];
     const newElements = [...newPages[pageIndex].elements];
     newElements.splice(index, 0, element);
     newPages[pageIndex] = { ...newPages[pageIndex], elements: newElements };
-    
     return { pages: newPages, selectedElement: element };
   }),
 
   removeElement: (id) => set((state) => {
     const pageIndex = state.pages.findIndex(p => p.id === state.activePageId);
     if (pageIndex === -1) return state;
-
     const newPages = [...state.pages];
     newPages[pageIndex] = {
       ...newPages[pageIndex],
@@ -104,13 +137,11 @@ export const useBuilderStore = create<BuilderStore>((set) => ({
   reorderElements: (startIndex, endIndex) => set((state) => {
     const pageIndex = state.pages.findIndex(p => p.id === state.activePageId);
     if (pageIndex === -1) return state;
-
     const newPages = [...state.pages];
     const newElements = [...newPages[pageIndex].elements];
     const [removed] = newElements.splice(startIndex, 1);
     newElements.splice(endIndex, 0, removed);
     newPages[pageIndex] = { ...newPages[pageIndex], elements: newElements };
-
     return { pages: newPages };
   }),
 
@@ -119,13 +150,11 @@ export const useBuilderStore = create<BuilderStore>((set) => ({
   updateElement: (id, updates) => set((state) => {
     const pageIndex = state.pages.findIndex(p => p.id === state.activePageId);
     if (pageIndex === -1) return state;
-
     const newPages = [...state.pages];
     const newElements = newPages[pageIndex].elements.map(el => 
       el.id === id ? { ...el, ...updates } : el
     );
     newPages[pageIndex] = { ...newPages[pageIndex], elements: newElements };
-
     return { 
         pages: newPages, 
         selectedElement: state.selectedElement?.id === id ? { ...state.selectedElement, ...updates } : state.selectedElement 

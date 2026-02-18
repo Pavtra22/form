@@ -6,64 +6,69 @@ import (
 	"gorm.io/gorm"
 )
 
-// FormRepository defines the interface for database operations
 type FormRepository interface {
-	Create(form *models.Form) error
-	FindAll() ([]models.Form, error)
-	FindByID(id int) (*models.Form, error)
-	CreateSubmission(submission *models.FormSubmission) error
-	FindSubmissionsByFormID(formID int) ([]models.FormSubmission, error)
-	DeleteSubmission(id int) error
-	// NEW: Delete Form
-	DeleteForm(id int) error
+	CreateForm(form *models.Form) (*models.Form, error)
+	GetAllForms() ([]models.Form, error)
+	GetForm(id uint) (*models.Form, error)
+	UpdateForm(form *models.Form) error
+	DeleteForm(id uint) error
+	SubmitForm(submission *models.FormSubmission) error
+	GetSubmissions(formID uint) ([]models.FormSubmission, error)
+	DeleteSubmission(id uint) error
 }
 
-// formRepository is the concrete implementation
 type formRepository struct {
 	db *gorm.DB
 }
 
-// NewFormRepository creates a new instance
 func NewFormRepository(db *gorm.DB) FormRepository {
 	return &formRepository{db: db}
 }
 
-func (r *formRepository) Create(form *models.Form) error {
-	return r.db.Create(form).Error
+func (r *formRepository) CreateForm(form *models.Form) (*models.Form, error) {
+	if err := r.db.Create(form).Error; err != nil {
+		return nil, err
+	}
+	return form, nil
 }
 
-func (r *formRepository) FindAll() ([]models.Form, error) {
+func (r *formRepository) GetAllForms() ([]models.Form, error) {
 	var forms []models.Form
-	err := r.db.Order("created_at desc").Find(&forms).Error
-	return forms, err
+	if err := r.db.Order("created_at desc").Find(&forms).Error; err != nil {
+		return nil, err
+	}
+	return forms, nil
 }
 
-func (r *formRepository) FindByID(id int) (*models.Form, error) {
+func (r *formRepository) GetForm(id uint) (*models.Form, error) {
 	var form models.Form
-	err := r.db.First(&form, id).Error
-	if err != nil {
+	if err := r.db.First(&form, id).Error; err != nil {
 		return nil, err
 	}
 	return &form, nil
 }
 
-func (r *formRepository) CreateSubmission(submission *models.FormSubmission) error {
+func (r *formRepository) UpdateForm(form *models.Form) error {
+	return r.db.Save(form).Error
+}
+
+func (r *formRepository) DeleteForm(id uint) error {
+	return r.db.Delete(&models.Form{}, id).Error
+}
+
+func (r *formRepository) SubmitForm(submission *models.FormSubmission) error {
 	return r.db.Create(submission).Error
 }
 
-func (r *formRepository) FindSubmissionsByFormID(formID int) ([]models.FormSubmission, error) {
+func (r *formRepository) GetSubmissions(formID uint) ([]models.FormSubmission, error) {
 	var submissions []models.FormSubmission
-	err := r.db.Where("form_schema_id = ?", formID).Order("created_at desc").Find(&submissions).Error
-	return submissions, err
+	// FIXED: Querying 'form_schema_id' to match the model field
+	if err := r.db.Where("form_schema_id = ?", formID).Order("created_at desc").Find(&submissions).Error; err != nil {
+		return nil, err
+	}
+	return submissions, nil
 }
 
-func (r *formRepository) DeleteSubmission(id int) error {
+func (r *formRepository) DeleteSubmission(id uint) error {
 	return r.db.Delete(&models.FormSubmission{}, id).Error
-}
-
-// NEW Implementation
-func (r *formRepository) DeleteForm(id int) error {
-	// Optional: Delete associated submissions first or rely on constraints
-	// For GORM with constraints, we might just delete the form.
-	return r.db.Delete(&models.Form{}, id).Error
 }

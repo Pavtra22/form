@@ -1,8 +1,8 @@
 import { useBuilderStore } from '../../store/useBuilderStore';
-import { X, Plus, Trash2, CornerDownRight, Settings2, GitBranch } from 'lucide-react';
+import { X, Plus, Trash2, Settings2, GitBranch, GripVertical } from 'lucide-react';
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { PageLogic, LogicOperator } from '../../types';
+import type { LogicRule, LogicCondition, ConditionOperator } from '../../types';
 
 export function PropertiesPanel() {
   const { 
@@ -11,53 +11,63 @@ export function PropertiesPanel() {
     setSelectedElement,
     pages,
     activePageId,
-    addCondition,
-    removeCondition
+    addLogicRule,
+    removeLogicRule,
+    updateLogicRule,
+    addConditionToRule,
+    removeConditionFromRule
   } = useBuilderStore();
 
   const [activeTab, setActiveTab] = useState<'props' | 'logic'>('props');
 
-  // Logic State Local
+  // Logic State
   const activePage = pages.find(p => p.id === activePageId);
   const eligibleElements = activePage?.elements.filter(el => 
     el.type === 'stars' || el.type === 'select'
   ) || [];
 
-  const [newLogic, setNewLogic] = useState<Partial<PageLogic>>({
-    operator: 'equals',
-    value: ''
-  });
+  // Temporary state for a new rule creation
+  const [newRuleTarget, setNewRuleTarget] = useState('');
 
-  const getOperatorLabel = (op: LogicOperator) => {
-      switch(op) {
-          case 'equals': return '=';
-          case 'not_equals': return '≠';
-          case 'greater_than': return '>';
-          case 'less_than': return '<';
-          default: return op;
-      }
+  // Helper for operator labels (re-added if needed for display, otherwise remove)
+  // const getOperatorLabel = (op: ConditionOperator) => { ... } // Removed as unused if not used in JSX
+
+  // Helper to add a new condition to an existing rule
+  const handleAddCondition = (ruleId: string) => {
+      if (eligibleElements.length === 0) return;
+      const firstEl = eligibleElements[0];
+      const newCond: LogicCondition = {
+          id: uuidv4(),
+          triggerElementId: firstEl.id,
+          operator: 'equals',
+          value: ''
+      };
+      addConditionToRule(activePageId, ruleId, newCond);
   };
 
-  // Helper to get the trigger element object so we can check its type (select vs stars)
-  const selectedTriggerElement = activePage?.elements.find(el => el.id === newLogic.triggerElementId);
+  // Helper to update a specific condition inside a rule
+  const handleUpdateCondition = (rule: LogicRule, condId: string, updates: Partial<LogicCondition>) => {
+      const newConditions = rule.conditions.map(c => 
+          c.id === condId ? { ...c, ...updates } : c
+      );
+      updateLogicRule(activePageId, rule.id, { conditions: newConditions });
+  };
 
-  function handleAddLogic() {
-    if (!newLogic.triggerElementId || !newLogic.targetPageId || !newLogic.value) return;
-    
-    // For dropdowns, force operator to 'equals' if not set
-    const operator = selectedTriggerElement?.type === 'select' ? 'equals' : (newLogic.operator as LogicOperator);
+  const handleCreateRule = () => {
+      if (!newRuleTarget) return;
+      const newRule: LogicRule = {
+          id: uuidv4(),
+          targetPageId: newRuleTarget,
+          matchType: 'AND',
+          conditions: [] // Start empty, user adds conditions
+      };
+      addLogicRule(activePageId, newRule);
+      setNewRuleTarget('');
+      // Automatically add first condition placeholder
+      setTimeout(() => handleAddCondition(newRule.id), 0);
+  };
 
-    addCondition(activePageId, {
-        id: uuidv4(),
-        triggerElementId: newLogic.triggerElementId!,
-        operator: operator,
-        value: newLogic.value!,
-        targetPageId: newLogic.targetPageId!
-    });
-    setNewLogic({ operator: 'equals', value: '' }); // Reset
-  }
-
-  // Helper to add a new option to a select element
+  // --- Element Property Helpers ---
   const addOption = () => {
       if (!selectedElement) return;
       const currentOptions = selectedElement.options || [];
@@ -81,7 +91,7 @@ export function PropertiesPanel() {
 
   return (
     <div className="flex flex-col h-full bg-white">
-        {/* Custom Tab Header */}
+        {/* Header Tabs */}
         <div className="flex p-2 bg-gray-50 border-b gap-1">
             <button 
                 className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all
@@ -105,14 +115,7 @@ export function PropertiesPanel() {
 
         <div className="flex-1 overflow-y-auto p-5">
             {activeTab === 'props' ? (
-                selectedElement ? (
-                    renderPropertiesForm()
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-64 text-gray-400 text-center px-4">
-                        <Settings2 size={48} className="mb-4 opacity-20" />
-                        <p>Select an element on the canvas to edit its properties.</p>
-                    </div>
-                )
+                selectedElement ? renderPropertiesForm() : renderEmptyState()
             ) : (
                 renderLogicTab()
             )}
@@ -120,61 +123,64 @@ export function PropertiesPanel() {
     </div>
   );
 
+  function renderEmptyState() {
+      return (
+        <div className="flex flex-col items-center justify-center h-64 text-gray-400 text-center px-4">
+            <Settings2 size={48} className="mb-4 opacity-20" />
+            <p>Select an element on the canvas to edit its properties.</p>
+        </div>
+      );
+  }
+
   function renderPropertiesForm() {
       return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="flex justify-between items-center pb-4 border-b">
-                <h2 className="text-lg font-bold text-gray-800">Edit Element</h2>
-                <button 
-                onClick={() => setSelectedElement(null)}
-                className="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                <X size={20} />
+                <h2 className="text-lg font-bold text-gray-800">Edit {selectedElement?.type}</h2>
+                <button onClick={() => setSelectedElement(null)} className="p-1 rounded-full hover:bg-gray-100 text-gray-400">
+                    <X size={20} />
                 </button>
             </div>
 
             <div className="space-y-5">
                 <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                        Label Question
-                    </label>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Label</label>
                     <input
                         type="text"
                         value={selectedElement!.label}
                         onChange={(e) => updateElement(selectedElement!.id, { label: e.target.value })}
                         className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                        placeholder="e.g. What is your name?"
                     />
                 </div>
 
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                        Placeholder Text
-                    </label>
-                    <input
-                        type="text"
-                        value={selectedElement!.placeholder || ''}
-                        onChange={(e) => updateElement(selectedElement!.id, { placeholder: e.target.value })}
-                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                        placeholder="e.g. Type here..."
-                    />
-                </div>
+                {selectedElement?.type !== 'stars' && (
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Placeholder</label>
+                        <input
+                            type="text"
+                            value={selectedElement!.placeholder || ''}
+                            onChange={(e) => updateElement(selectedElement!.id, { placeholder: e.target.value })}
+                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                        />
+                    </div>
+                )}
 
-                {/* --- OPTIONS EDITOR (Only for Select) --- */}
+                {/* Dropdown Options */}
                 {selectedElement?.type === 'select' && (
                     <div>
-                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 flex justify-between items-center">
-                            Dropdown Options
-                            <button onClick={addOption} className="text-blue-600 hover:text-blue-700 text-xs flex items-center gap-1">
+                        <div className="flex justify-between items-center mb-1.5">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide">Options</label>
+                            <button onClick={addOption} className="text-blue-600 hover:text-blue-700 text-xs flex items-center gap-1 font-medium">
                                 <Plus size={12} /> Add
                             </button>
-                        </label>
-                        <div className="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                        </div>
+                        <div className="space-y-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
                             {(!selectedElement.options || selectedElement.options.length === 0) && (
-                                <p className="text-xs text-gray-400 italic text-center py-2">No options added yet.</p>
+                                <p className="text-xs text-gray-400 italic text-center py-2">No options added.</p>
                             )}
                             {selectedElement.options?.map((opt, idx) => (
                                 <div key={idx} className="flex gap-2 items-center">
+                                    <GripVertical size={12} className="text-gray-300" />
                                     <input 
                                         type="text"
                                         value={opt}
@@ -200,7 +206,6 @@ export function PropertiesPanel() {
                         />
                         <div className="flex-1">
                             <span className="block text-sm font-medium text-gray-900 group-hover:text-blue-700">Required Field</span>
-                            <span className="block text-xs text-gray-500">User must fill this out</span>
                         </div>
                     </label>
                 </div>
@@ -211,171 +216,183 @@ export function PropertiesPanel() {
 
   function renderLogicTab() {
       return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 pb-20">
             <div className="pb-4 border-b">
                 <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                     <GitBranch size={20} className="text-purple-500" />
-                    Page Logic
+                    Logic Flows
                 </h3>
                 <p className="text-sm text-gray-500 mt-1">
-                    Redirect users based on their answers on <strong>{activePage?.title}</strong>.
+                    Define navigation rules for <strong>{activePage?.title}</strong>.
                 </p>
             </div>
 
-            {/* Existing Conditions List */}
-            <div className="space-y-3">
-                {activePage?.conditions && activePage.conditions.length > 0 ? (
-                    activePage.conditions.map(cond => {
-                        const triggerEl = activePage.elements.find(e => e.id === cond.triggerElementId);
-                        const targetPage = pages.find(p => p.id === cond.targetPageId);
-                        
-                        return (
-                            <div key={cond.id} className="bg-white p-3 rounded-lg border border-purple-100 shadow-sm relative group hover:shadow-md transition-shadow">
-                                <div className="text-sm text-gray-600 space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-semibold text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded text-xs">IF</span>
-                                        <span className="truncate max-w-[120px]" title={triggerEl?.label}>"{triggerEl?.label}"</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 pl-4">
-                                        <span className="font-mono font-bold text-purple-600 bg-purple-50 px-1.5 rounded text-xs">{getOperatorLabel(cond.operator)}</span>
-                                        <span className="font-medium text-gray-800">"{cond.value}"</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 pl-4 pt-1">
-                                        <CornerDownRight size={14} className="text-purple-400" />
-                                        <span className="text-xs uppercase font-bold text-gray-400">JUMP TO</span>
-                                        <span className="font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full text-xs">
-                                            {targetPage?.title || 'Unknown Page'}
-                                        </span>
-                                    </div>
+            {/* List of Logic Rules */}
+            <div className="space-y-4">
+                {activePage?.logicRules?.map((rule) => {
+                    return (
+                        <div key={rule.id} className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden group">
+                            {/* Rule Header */}
+                            <div className="bg-gray-50 px-3 py-2 border-b border-gray-200 flex justify-between items-center">
+                                <div className="flex items-center gap-2 text-sm text-gray-700">
+                                    <span className="font-bold text-xs uppercase bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">JUMP TO</span>
+                                    {/* Editable Target Page */}
+                                    <select 
+                                        className="font-medium truncate max-w-[150px] bg-transparent border-b border-dashed border-gray-400 focus:outline-none focus:border-purple-500"
+                                        value={rule.targetPageId}
+                                        onChange={(e) => updateLogicRule(activePageId, rule.id, { targetPageId: e.target.value })}
+                                    >
+                                        {pages.filter(p => p.id !== activePageId).map(p => (
+                                            <option key={p.id} value={p.id}>{p.title}</option>
+                                        ))}
+                                    </select>
                                 </div>
-                                <button 
-                                    onClick={() => removeCondition(activePageId, cond.id)}
-                                    className="absolute top-2 right-2 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
-                                >
+                                <button onClick={() => removeLogicRule(activePageId, rule.id)} className="text-gray-400 hover:text-red-500 transition-colors">
                                     <Trash2 size={14} />
                                 </button>
                             </div>
-                        );
-                    })
-                ) : (
-                    <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                        <p className="text-sm text-gray-400">No logic rules yet.</p>
-                    </div>
-                )}
-            </div>
 
-            {/* Add New Logic Form */}
-            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-4">
-                <h4 className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
-                    <Plus size={14} /> Add New Rule
-                </h4>
-                
-                {/* 1. IF Trigger */}
-                <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1.5">If answer to:</label>
-                    <div className="relative">
-                        <select 
-                            className="w-full appearance-none bg-white border border-gray-300 text-gray-700 py-2 px-3 pr-8 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                            onChange={e => {
-                                setNewLogic({ ...newLogic, triggerElementId: e.target.value, value: '' }); 
-                            }}
-                            value={newLogic.triggerElementId || ''}
-                        >
-                            <option value="">Select Question...</option>
-                            {eligibleElements.length > 0 ? (
-                                eligibleElements.map(el => (
-                                    <option key={el.id} value={el.id}>{el.label} ({el.type})</option>
-                                ))
-                            ) : (
-                                <option disabled>No valid inputs (Add Stars/Dropdown)</option>
-                            )}
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                            <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                        </div>
-                    </div>
-                </div>
+                            {/* Conditions List */}
+                            <div className="p-3 space-y-2">
+                                {rule.conditions.map((cond, cIdx) => {
+                                    const triggerEl = activePage.elements.find(e => e.id === cond.triggerElementId);
+                                    
+                                    return (
+                                        <div key={cond.id} className="flex flex-col gap-2 relative pl-4 border-l-2 border-purple-200">
+                                            {cIdx > 0 && (
+                                                <div className="absolute -left-[19px] top-0 bg-purple-50 text-[10px] font-bold text-purple-600 px-1 rounded border border-purple-200">
+                                                    {rule.matchType}
+                                                </div>
+                                            )}
+                                            
+                                            {/* Logic Row */}
+                                            <div className="grid grid-cols-1 gap-2 text-sm">
+                                                {/* 1. Trigger */}
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs text-gray-500 font-medium">IF ANSWER TO</span>
+                                                    <button onClick={() => removeConditionFromRule(activePageId, rule.id, cond.id)} className="text-red-400 hover:text-red-600">
+                                                        <X size={12} />
+                                                    </button>
+                                                </div>
+                                                <select 
+                                                    className="w-full border border-gray-300 rounded px-2 py-1 bg-white text-gray-700 focus:ring-1 focus:ring-purple-500 outline-none"
+                                                    value={cond.triggerElementId}
+                                                    onChange={(e) => handleUpdateCondition(rule, cond.id, { triggerElementId: e.target.value, value: '' })}
+                                                >
+                                                    {eligibleElements.length > 0 ? (
+                                                        eligibleElements.map(el => (
+                                                            <option key={el.id} value={el.id}>{el.label}</option>
+                                                        ))
+                                                    ) : (
+                                                        <option value="" disabled>No inputs available</option>
+                                                    )}
+                                                </select>
 
-                {/* 2. Operator & Value */}
-                {selectedTriggerElement?.type === 'select' ? (
-                    // --- DROPDOWN SPECIFIC UI ---
-                    <div className="grid grid-cols-3 gap-3">
-                        <div className="col-span-1">
-                            <label className="text-xs font-medium text-gray-700 block mb-1.5">Condition:</label>
-                            <div className="w-full bg-gray-100 border border-gray-300 text-gray-500 py-2 px-2 rounded-md text-sm cursor-not-allowed">
-                                Equals (=)
+                                                {/* 2. Operator & Value */}
+                                                <div className="flex gap-2">
+                                                    {triggerEl?.type === 'select' ? (
+                                                        // Dropdown specific Logic
+                                                        <div className="w-full flex gap-2">
+                                                            <div className="w-1/3 bg-gray-50 border border-gray-200 rounded px-2 py-1 text-xs flex items-center justify-center text-gray-500">
+                                                                is
+                                                            </div>
+                                                            <select 
+                                                                className="w-2/3 border border-gray-300 rounded px-2 py-1 bg-white text-xs" 
+                                                                value={cond.value}
+                                                                onChange={(e) => handleUpdateCondition(rule, cond.id, { value: e.target.value })}
+                                                            >
+                                                                <option value="" disabled>Select Option</option>
+                                                                {triggerEl.options?.map((opt, i) => (
+                                                                    <option key={i} value={opt}>{opt}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    ) : (
+                                                        // Standard Logic (Stars, etc)
+                                                        <>
+                                                            <select 
+                                                                className="w-1/3 border border-gray-300 rounded px-2 py-1 bg-white text-xs"
+                                                                value={cond.operator}
+                                                                onChange={(e) => handleUpdateCondition(rule, cond.id, { operator: e.target.value as ConditionOperator })}
+                                                            >
+                                                                <option value="equals">=</option>
+                                                                <option value="not_equals">≠</option>
+                                                                <option value="greater_than">&gt;</option>
+                                                                <option value="less_than">&lt;</option>
+                                                            </select>
+                                                            <input 
+                                                                className="w-2/3 border border-gray-300 rounded px-2 py-1 bg-white text-xs" 
+                                                                value={cond.value}
+                                                                onChange={(e) => handleUpdateCondition(rule, cond.id, { value: e.target.value })}
+                                                                placeholder="Value"
+                                                            />
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+
+                                {/* Add Condition Button */}
+                                <div className="pt-2">
+                                    <button 
+                                        onClick={() => handleAddCondition(rule.id)}
+                                        className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1"
+                                    >
+                                        <Plus size={12} /> AND condition
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                        <div className="col-span-2">
-                            <label className="text-xs font-medium text-gray-700 block mb-1.5">Value:</label>
-                            <select 
-                                className="w-full bg-white border border-gray-300 text-gray-700 py-2 px-2 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                onChange={e => setNewLogic({...newLogic, value: e.target.value})}
-                                value={newLogic.value}
-                            >
-                                <option value="">Select Option...</option>
-                                {selectedTriggerElement.options?.map((opt, idx) => (
-                                    <option key={idx} value={opt}>{opt}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                ) : (
-                    // --- STARS / DEFAULT UI ---
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="text-xs font-medium text-gray-700 block mb-1.5">Condition:</label>
-                            <select 
-                                className="w-full bg-white border border-gray-300 text-gray-700 py-2 px-2 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                onChange={e => setNewLogic({...newLogic, operator: e.target.value as LogicOperator})}
-                                value={newLogic.operator}
-                            >
-                                <option value="equals">Equals (=)</option>
-                                <option value="not_equals">Not Equals (≠)</option>
-                                <option value="greater_than">Greater than (&gt;)</option>
-                                <option value="less_than">Less than (&lt;)</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="text-xs font-medium text-gray-700 block mb-1.5">Value:</label>
-                            <input 
-                                type="text" 
-                                className="w-full bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                placeholder="e.g. 5"
-                                value={newLogic.value || ''}
-                                onChange={e => setNewLogic({...newLogic, value: e.target.value})}
-                            />
-                        </div>
-                    </div>
-                )}
 
-                {/* 3. Target Page */}
-                <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1.5">Then jump to:</label>
-                    <div className="relative">
+                            {/* Match Type Toggle (Only if >1 condition) */}
+                            {rule.conditions.length > 1 && (
+                                <div className="bg-gray-50 px-3 py-1.5 border-t border-gray-200 flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase">Match:</span>
+                                    <div className="flex bg-white rounded border border-gray-300 overflow-hidden">
+                                        <button 
+                                            onClick={() => updateLogicRule(activePageId, rule.id, { matchType: 'AND' })}
+                                            className={`px-2 py-0.5 text-[10px] font-bold ${rule.matchType === 'AND' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                                        >
+                                            ALL (AND)
+                                        </button>
+                                        <div className="w-px bg-gray-300"></div>
+                                        <button 
+                                            onClick={() => updateLogicRule(activePageId, rule.id, { matchType: 'OR' })}
+                                            className={`px-2 py-0.5 text-[10px] font-bold ${rule.matchType === 'OR' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                                        >
+                                            ANY (OR)
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+
+                {/* Create New Rule Section */}
+                <div className="mt-6 pt-4 border-t border-gray-200">
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Create New Logic Jump</label>
+                    <div className="flex gap-2">
                         <select 
-                            className="w-full appearance-none bg-white border border-gray-300 text-gray-700 py-2 px-3 pr-8 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            onChange={e => setNewLogic({...newLogic, targetPageId: e.target.value})}
-                            value={newLogic.targetPageId || ''}
+                            className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-purple-500 outline-none"
+                            value={newRuleTarget}
+                            onChange={e => setNewRuleTarget(e.target.value)}
                         >
-                            <option value="">Select Page...</option>
+                            <option value="">Select Target Page...</option>
                             {pages.filter(p => p.id !== activePageId).map(p => (
                                 <option key={p.id} value={p.id}>{p.title}</option>
                             ))}
                         </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                            <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                        </div>
+                        <button 
+                            onClick={handleCreateRule}
+                            disabled={!newRuleTarget}
+                            className="bg-purple-600 text-white px-3 py-2 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Plus size={20} />
+                        </button>
                     </div>
                 </div>
-
-                <button 
-                    onClick={handleAddLogic}
-                    disabled={!newLogic.triggerElementId || !newLogic.targetPageId || !newLogic.value}
-                    className="w-full bg-purple-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.98]"
-                >
-                    <Plus size={16} /> Add Logic Rule
-                </button>
             </div>
         </div>
       );

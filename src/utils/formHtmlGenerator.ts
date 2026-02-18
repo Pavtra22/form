@@ -1,58 +1,190 @@
 import type { FormPage } from '../types';
 
+interface LogicRule {
+  targetPageIndex: number;
+  matchType: 'AND' | 'OR';
+  conditions: Array<{
+    triggerId: string;
+    operator: 'equals' | 'not_equals' | 'greater_than' | 'less_than';
+    value: string;
+  }>;
+}
+
 export function generateFormHTML(formName: string, pages: FormPage[]): string {
   // 1. Serialize logic into a format the JS runtime can read
   // Map page INDEX (0, 1, 2) to its logic rules
   // We use indexes because navigation in the public form is index-based (step 0, step 1)
-  const logicMap: Record<number, { triggerId: string; operator: string; value: string | number; targetIndex: number }[]> = {};
+  const logicMap: Record<number, LogicRule[]> = {};
   
   pages.forEach((page, index) => {
-      if (page.conditions && page.conditions.length > 0) {
-          logicMap[index] = page.conditions.map(cond => {
-              // Find target index
-              const targetIndex = pages.findIndex(p => p.id === cond.targetPageId);
+      if (page.logicRules && page.logicRules.length > 0) {
+          logicMap[index] = page.logicRules.map(rule => {
+              const targetIndex = pages.findIndex(p => p.id === rule.targetPageId);
               return {
-                  triggerId: cond.triggerElementId,
-                  operator: cond.operator,
-                  value: cond.value,
-                  targetIndex: targetIndex
+                  targetPageIndex: targetIndex,
+                  matchType: rule.matchType,
+                  conditions: rule.conditions.map(cond => ({
+                      triggerId: cond.triggerElementId,
+                      operator: cond.operator,
+                      value: cond.value
+                  }))
               };
           });
       }
   });
 
-  const logicScript = `const pageLogic = ${JSON.stringify(logicMap)};`;
+  const pageStartIndices: number[] = [];
+  let currentIndex = 0;
+  pages.forEach(page => {
+      pageStartIndices.push(currentIndex);
+      currentIndex += (page.elements.length > 0 ? page.elements.length : 1);
+  });
 
+  const logicScript = `
+    const pageLogic = ${JSON.stringify(logicMap)};
+    const pageStartIndices = ${JSON.stringify(pageStartIndices)};
+    const totalPages = ${pages.length};
+  `;
+
+  // Use the same CSS as the backend template
   const css = `
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f3f4f6; margin: 0; padding: 20px; }
-    .container { max-width: 640px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-    h1 { margin-top: 0; color: #1f2937; border-bottom: 1px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 30px; font-size: 24px; }
-    .form-group { margin-bottom: 20px; }
-    label { display: block; font-weight: 600; margin-bottom: 8px; color: #374151; font-size: 14px; }
+    /* Mobile-First CSS */
+    body { 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+        background: #f3f4f6; 
+        margin: 0; 
+        padding: 16px; 
+    }
+    .container { 
+        max-width: 640px; 
+        margin: 0 auto; 
+        background: white; 
+        padding: 24px; 
+        border-radius: 12px; 
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); 
+    }
+    h1 { 
+        margin-top: 0; 
+        color: #1f2937; 
+        border-bottom: 1px solid #e5e7eb; 
+        padding-bottom: 16px; 
+        margin-bottom: 24px; 
+        font-size: 24px; 
+    }
+    .form-group { margin-bottom: 24px; }
+    label { display: block; font-weight: 600; margin-bottom: 8px; color: #374151; font-size: 16px; }
     .required { color: #dc2626; margin-left: 4px; }
-    input[type="text"], input[type="email"], input[type="tel"], input[type="date"], textarea, select {
-        width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: border-color 0.2s;
-    }
-    input:focus, textarea:focus, select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px #bfdbfe; }
-    button {
-        background-color: #2563eb; color: white; font-weight: 600; padding: 12px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; transition: background 0.2s;
-    }
-    button:hover { background-color: #1d4ed8; }
-    button.secondary { background-color: #9ca3af; }
-    button.secondary:hover { background-color: #6b7280; }
     
+    /* Inputs */
+    input[type="text"], input[type="email"], input[type="tel"], input[type="date"], textarea, select {
+        width: 100%; 
+        padding: 12px; 
+        border: 1px solid #d1d5db; 
+        border-radius: 8px; 
+        font-size: 16px; 
+        box-sizing: border-box; 
+        transition: border-color 0.2s;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+    
+    /* Video Recorder */
+    .video-container { 
+        border: 2px dashed #d1d5db; 
+        border-radius: 8px; 
+        padding: 12px; 
+        text-align: center; 
+        background: #f9fafb; 
+    }
+    video { 
+        width: 100%; 
+        max-height: 400px; 
+        border-radius: 6px; 
+        background: black; 
+        display: none; 
+        margin-bottom: 12px; 
+        object-fit: cover; 
+    }
+    .video-btn { 
+        background: #dc2626; 
+        color: white; 
+        border: none; 
+        padding: 10px 20px; 
+        border-radius: 30px; 
+        cursor: pointer; 
+        display: inline-flex; 
+        align-items: center; 
+        gap: 8px; 
+        font-size: 14px; 
+        font-weight: 500;
+    }
+    .video-btn.stop { background: #374151; }
+
+    /* Star Rating */
+    .stars { display: flex; gap: 8px; flex-wrap: wrap; }
+    .star { 
+        font-size: 32px; 
+        cursor: pointer; 
+        color: #d1d5db; 
+        background: none; 
+        border: none; 
+        padding: 0; 
+        line-height: 1;
+    }
+    .star.active { color: #facc15; }
+
+    /* Progress Bar */
+    .progress-wrapper {
+        display: none;
+        margin-top: 20px;
+        width: 100%;
+        background-color: #e5e7eb;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .progress-bar {
+        width: 0%;
+        height: 10px;
+        background-color: #2563eb;
+        transition: width 0.2s;
+    }
+    .progress-text {
+        text-align: center;
+        font-size: 14px;
+        color: #374151;
+        margin-top: 5px;
+    }
+
+    /* Multi-Page Navigation */
     .form-step { display: none; animation: fadeIn 0.3s; }
     .form-step.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
-    .btn-group { display: flex; justify-content: space-between; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 20px; }
-    
-    .stars { display: flex; gap: 5px; }
-    .star { font-size: 24px; cursor: pointer; color: #d1d5db; transition: color 0.2s; background: none; border: none; padding: 0; }
-    .star.active { color: #facc15; }
-
-    .video-container { border: 2px dashed #d1d5db; border-radius: 8px; padding: 10px; text-align: center; background: #f9fafb; }
-    .video-btn { background: #dc2626; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+    .btn-group { display: flex; justify-content: space-between; margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 20px; }
+    .btn-primary { 
+        background-color: #2563eb; 
+        color: white; 
+        font-weight: 600; 
+        padding: 12px 24px; 
+        border: none; 
+        border-radius: 8px; 
+        cursor: pointer; 
+        font-size: 16px; 
+        transition: background 0.2s; 
+    }
+    .btn-primary:hover { background-color: #1d4ed8; }
+    .btn-secondary { 
+        background-color: #9ca3af; 
+        color: white; 
+        padding: 12px 24px; 
+        border: none; 
+        border-radius: 8px; 
+        cursor: pointer; 
+        font-size: 16px; 
+        transition: background 0.2s; 
+    }
+    .btn-secondary:hover { background-color: #6b7280; }
   `;
 
   // Render Each Page and its elements
@@ -63,37 +195,34 @@ export function generateFormHTML(formName: string, pages: FormPage[]): string {
       
       let inputHtml = '';
       
-      // Note: We use unique names for inputs based on their ID to easily grab values in logic check
+      // Note: We use unique IDs for inputs to match the backend template behavior
       switch (el.type) {
         case 'text':
         case 'email':
         case 'phone': {
           const type = el.type === 'phone' ? 'tel' : el.type;
-          inputHtml = `<input type="${type}" name="${el.label}" id="input-${el.id}" placeholder="${el.placeholder || ''}" ${requiredAttr}>`;
+          inputHtml = `<input type="${type}" name="${el.id}" id="input-${el.id}" placeholder="${el.placeholder || ''}" ${requiredAttr}>`;
           break;
         }
         case 'date':
-          inputHtml = `<input type="date" name="${el.label}" id="input-${el.id}" ${requiredAttr}>`;
+          inputHtml = `<input type="date" name="${el.id}" id="input-${el.id}" ${requiredAttr}>`;
           break;
         case 'textarea':
-          inputHtml = `<textarea name="${el.label}" id="input-${el.id}" rows="4" placeholder="${el.placeholder || ''}" ${requiredAttr}></textarea>`;
+          inputHtml = `<textarea name="${el.id}" id="input-${el.id}" rows="4" placeholder="${el.placeholder || ''}" ${requiredAttr}></textarea>`;
           break;
         case 'select': {
-          const optionsHtml = (el.options && el.options.length > 0)
-            ? el.options.map(opt => `<option value="${opt}">${opt}</option>`).join('')
-            : `<option value="Option 1">Option 1</option><option value="Option 2">Option 2</option>`;
-            
+          const options = el.options && el.options.length > 0 ? el.options : ["Option 1", "Option 2"];
           inputHtml = `
-            <select name="${el.label}" id="input-${el.id}" ${requiredAttr}>
+            <select name="${el.id}" id="input-${el.id}" ${requiredAttr}>
               <option value="" disabled selected>Select an option</option>
-              ${optionsHtml}
+              ${options.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
             </select>`;
           break;
         }
         case 'stars':
           inputHtml = `
             <div class="stars" id="stars-${el.id}">
-              <input type="hidden" name="${el.label}" id="input-${el.id}" ${requiredAttr}>
+              <input type="hidden" name="${el.id}" id="input-${el.id}" ${requiredAttr}>
               <button type="button" class="star" onclick="setRating('${el.id}', 1)">★</button>
               <button type="button" class="star" onclick="setRating('${el.id}', 2)">★</button>
               <button type="button" class="star" onclick="setRating('${el.id}', 3)">★</button>
@@ -103,10 +232,21 @@ export function generateFormHTML(formName: string, pages: FormPage[]): string {
           break;
         case 'video':
           inputHtml = `
-            <div class="video-container">
-              <input type="hidden" name="${el.label}" id="input-${el.id}" ${requiredAttr}>
-              <p style="padding: 20px; color: #6b7280;">Video Recorder Preview</p>
-              <button type="button" class="video-btn" onclick="alert('Disabled in preview')">Start Recording</button>
+            <div class="video-container" id="video-wrapper-${el.id}">
+              <input type="hidden" name="${el.id}" id="input-${el.id}" ${requiredAttr}>
+              
+              <video id="preview-${el.id}" autoplay muted playsinline></video>
+              <video id="playback-${el.id}" controls playsinline></video>
+              
+              <div style="margin-top: 10px;">
+                  <button type="button" id="btn-start-${el.id}" class="video-btn" onclick="startRecording('${el.id}')">
+                      <span style="font-size: 18px;">●</span> Start Recording
+                  </button>
+                  <button type="button" id="btn-stop-${el.id}" class="video-btn stop" onclick="stopRecording('${el.id}')" style="display:none;">
+                      ■ Stop Recording
+                  </button>
+              </div>
+              <p id="status-${el.id}" style="font-size: 12px; color: #6b7280; margin-top: 8px;">Ready to record</p>
             </div>`;
           break;
       }
@@ -138,19 +278,28 @@ export function generateFormHTML(formName: string, pages: FormPage[]): string {
     ${logicScript}
 
     function showStep(n) {
+        // If no steps (empty form), do nothing to prevent errors
+        if (totalSteps === 0) return;
+
         steps.forEach((step, index) => {
             step.classList.toggle('active', index === n);
         });
-        
+
         const prevBtn = document.getElementById('prevBtn');
-        if(prevBtn) prevBtn.style.display = n === 0 ? 'none' : 'inline-block';
+        const nextBtn = document.getElementById('nextBtn');
+        const submitBtn = document.getElementById('submitBtn');
+
+        if (prevBtn) prevBtn.style.display = n === 0 ? 'none' : 'inline-block';
         
         if (n === totalSteps - 1) {
-            document.getElementById('nextBtn').style.display = 'none';
-            document.getElementById('submitBtn').style.display = 'inline-block';
+            if (nextBtn) nextBtn.style.display = 'none';
+            if (submitBtn) submitBtn.style.display = 'inline-block';
         } else {
-            document.getElementById('nextBtn').style.display = 'inline-block';
-            document.getElementById('submitBtn').style.display = 'none';
+            if (nextBtn) {
+                nextBtn.style.display = 'inline-block';
+                nextBtn.innerHTML = "Next";
+            }
+            if (submitBtn) submitBtn.style.display = 'none';
         }
     }
 
@@ -158,37 +307,47 @@ export function generateFormHTML(formName: string, pages: FormPage[]): string {
         // Validation (only if moving forward)
         if (n === 1 && !validateStep(currentStep)) return;
 
-        // --- NEW: Logic Evaluation (only if moving forward) ---
+        // --- LOGIC EVALUATION (AND/OR) ---
         if (n === 1 && pageLogic[currentStep]) {
             const rules = pageLogic[currentStep];
-            let jumpTarget = -1;
+            let jumpTargetPage = -1;
 
             for (const rule of rules) {
-                const input = document.getElementById('input-' + rule.triggerId);
-                if (!input) continue;
-                
-                const val = input.value;
-                const compareVal = rule.value;
-                let match = false;
+                // Rule contains conditions[] and matchType (AND/OR)
+                let conditionsMet = 0;
+                let conditionsTotal = rule.conditions.length;
 
-                // Simple Logic Comparator
-                // Note: Numeric comparison for greater/less
-                if (rule.operator === 'equals') {
-                    match = val == compareVal;
-                } else if (rule.operator === 'greater_than') {
-                    match = parseFloat(val) > parseFloat(compareVal);
-                } else if (rule.operator === 'less_than') {
-                    match = parseFloat(val) < parseFloat(compareVal);
+                for (const cond of rule.conditions) {
+                    const input = document.getElementById('input-' + cond.triggerId);
+                    if (!input) continue; // Should not happen
+                    
+                    const val = input.value;
+                    const compareVal = cond.value;
+                    let match = false;
+
+                    if (cond.operator === 'equals') match = val == compareVal;
+                    else if (cond.operator === 'not_equals') match = val != compareVal;
+                    else if (cond.operator === 'greater_than') match = parseFloat(val) > parseFloat(compareVal);
+                    else if (cond.operator === 'less_than') match = parseFloat(val) < parseFloat(compareVal);
+
+                    if (match) conditionsMet++;
                 }
 
-                if (match && rule.targetIndex !== -1) {
-                    jumpTarget = rule.targetIndex;
-                    break; // First matching rule wins
+                let ruleMatched = false;
+                if (rule.matchType === 'AND') {
+                    ruleMatched = conditionsMet === conditionsTotal;
+                } else { // OR
+                    ruleMatched = conditionsMet > 0;
+                }
+
+                if (ruleMatched && rule.targetPageIndex !== -1) {
+                    jumpTargetPage = rule.targetPageIndex;
+                    break; // First rule wins
                 }
             }
 
-            if (jumpTarget !== -1) {
-                currentStep = jumpTarget;
+            if (jumpTargetPage !== -1) {
+                currentStep = jumpTargetPage;
                 showStep(currentStep);
                 return;
             }
@@ -199,12 +358,17 @@ export function generateFormHTML(formName: string, pages: FormPage[]): string {
     }
 
     function validateStep(n) {
+        if (totalSteps === 0) return true;
         const activeStep = steps[n];
+        if (!activeStep) return true;
+
         const inputs = activeStep.querySelectorAll('input, select, textarea');
         let valid = true;
+        
         inputs.forEach(input => {
             if (input.hasAttribute('required') && !input.value.trim()) {
                 input.style.borderColor = "red";
+                // Shake effect could be added here
                 valid = false;
             } else {
                 input.style.borderColor = "#d1d5db";
@@ -220,6 +384,49 @@ export function generateFormHTML(formName: string, pages: FormPage[]): string {
         stars.forEach((star, index) => {
             star.classList.toggle('active', index < value);
         });
+    }
+
+    // --- VIDEO RECORDING LOGIC MOCK ---
+    // Since this is a preview, we mock the recording functionality
+    let recorders = {};
+    let chunks = {};
+    let finalBlobs = {}; 
+    let recordedTypes = {}; 
+
+    async function startRecording(id) {
+        try {
+            finalBlobs[id] = null;
+            chunks[id] = [];
+
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "user" }, 
+                audio: true 
+            });
+            
+            const preview = document.getElementById('preview-' + id);
+            preview.style.display = 'block';
+            document.getElementById('playback-' + id).style.display = 'none';
+            preview.srcObject = stream;
+
+            // Mock implementation for preview
+            alert("This is a preview. Recording functionality is simulated.");
+            
+            // In a real implementation, we would set up MediaRecorder here
+            
+        } catch (err) {
+            alert("Could not access camera. Ensure you have granted permissions.");
+            console.error(err);
+        }
+    }
+
+    function stopRecording(id) {
+       // Mock implementation
+       const startBtn = document.getElementById('btn-start-' + id);
+       startBtn.style.display = 'inline-flex';
+       startBtn.innerHTML = '↺ Retake';
+       document.getElementById('btn-stop-' + id).style.display = 'none';
+       document.getElementById('status-' + id).innerText = "Video captured (Mock)!";
+       document.getElementById('input-' + id).value = "[VIDEO_ATTACHED]";
     }
 
     document.getElementById('mainForm').addEventListener('submit', function(e) {
@@ -246,10 +453,16 @@ export function generateFormHTML(formName: string, pages: FormPage[]): string {
         <form id="mainForm">
             ${pagesHtml}
             
+            <!-- Progress Bar -->
+            <div class="progress-wrapper" id="uploadProgress">
+                <div class="progress-bar" id="progressBar"></div>
+                <p class="progress-text" id="progressText">Uploading: 0%</p>
+            </div>
+
             <div class="btn-group">
-                <button type="button" id="prevBtn" class="secondary" onclick="changeStep(-1)">Back</button>
-                <button type="button" id="nextBtn" onclick="changeStep(1)">Next</button>
-                <button type="submit" id="submitBtn" style="display:none;">Submit Form</button>
+                <button type="button" id="prevBtn" class="btn-secondary" onclick="changeStep(-1)">Back</button>
+                <button type="button" id="nextBtn" class="btn-primary" onclick="changeStep(1)">Next</button>
+                <button type="submit" id="submitBtn" class="btn-primary" style="display:none;">Submit Form</button>
             </div>
         </form>
     </div>

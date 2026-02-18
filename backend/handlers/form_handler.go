@@ -29,20 +29,25 @@ type FormPage struct {
 	ID       string        `json:"id"`
 	Title    string        `json:"title"`
 	Elements []FormElement `json:"elements"`
+	// We don't strictly need LogicRules here for the server-side rendering loop,
+	// but useful if we wanted to debug.
+	// We will rely on RawElements for the JS logic.
 }
 
 type FormElement struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	Label       string `json:"label"`
-	Required    bool   `json:"required"`
-	Placeholder string `json:"placeholder"`
+	ID          string   `json:"id"`
+	Type        string   `json:"type"`
+	Label       string   `json:"label"`
+	Required    bool     `json:"required"`
+	Placeholder string   `json:"placeholder"`
+	Options     []string `json:"options"`
 }
 
 type TemplateData struct {
-	ID    uint
-	Name  string
-	Pages []FormPage
+	ID          uint
+	Name        string
+	Pages       []FormPage
+	RawElements string // Added to pass full JSON to frontend JS
 }
 
 // CreateForm
@@ -58,6 +63,35 @@ func (h *FormHandler) CreateForm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	form, err := h.service.CreateForm(req.Name, req.Elements)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(form)
+}
+
+// UpdateForm
+func (h *FormHandler) UpdateForm(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	type Request struct {
+		Name     string `json:"name"`
+		Elements string `json:"elements"`
+	}
+	var req Request
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	form, err := h.service.UpdateForm(uint(id), req.Name, req.Elements)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -114,7 +148,6 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// --- ROBUST PARSING LOGIC ---
-	// We first decode into a generic map to inspect the structure
 	var raw []map[string]interface{}
 	if err := json.Unmarshal([]byte(form.Elements), &raw); err != nil {
 		http.Error(w, "JSON Parse Error", http.StatusInternalServerError)
@@ -122,16 +155,12 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var pages []FormPage
-
-	// Heuristic: If the first item has an "elements" key, it's a Page.
-	// If it has "type" or "label" but NO "elements", it's a legacy Element.
 	isMultiPage := false
 	if len(raw) > 0 {
 		if _, ok := raw[0]["elements"]; ok {
 			isMultiPage = true
 		}
 	} else {
-		// Empty form, treat as multi-page with 0 pages
 		isMultiPage = true
 	}
 
@@ -141,13 +170,11 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		// Fallback: It's a legacy flat list of elements
 		var legacyElements []FormElement
 		if err := json.Unmarshal([]byte(form.Elements), &legacyElements); err != nil {
 			http.Error(w, "Failed to parse legacy elements", http.StatusInternalServerError)
 			return
 		}
-		// Wrap in a default page
 		pages = []FormPage{
 			{
 				ID:       "default-page",
@@ -158,12 +185,12 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := TemplateData{
-		ID:    form.ID,
-		Name:  form.Name,
-		Pages: pages,
+		ID:          form.ID,
+		Name:        form.Name,
+		Pages:       pages,
+		RawElements: form.Elements, // Passing raw JSON for JS logic
 	}
 
-	// Define helper functions for the template
 	funcMap := template.FuncMap{
 		"add": func(a, b int) int {
 			return a + b
@@ -171,10 +198,8 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tmplPath := filepath.Join("backend", "templates", "view_form.html")
-	// Parse with FuncMap
 	tmpl, err := template.New("view_form.html").Funcs(funcMap).ParseFiles(tmplPath)
 
-	// Fallback path logic if first path fails (e.g. running from different dir)
 	if err != nil {
 		tmpl, err = template.New("view_form.html").Funcs(funcMap).ParseFiles(filepath.Join("templates", "view_form.html"))
 		if err != nil {
@@ -187,22 +212,16 @@ func (h *FormHandler) ServeFormHTML(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// SubmitForm handles Multipart requests (JSON data + Video Files)
+// SubmitForm
 func (h *FormHandler) SubmitForm(w http.ResponseWriter, r *http.Request) {
-	// --- LOG START ---
-	requestStart := time.Now()
-	fmt.Println("\n--- [START] New Submission Request ---")
-
-	// 1. Parse Multipart Form
+	// Keep existing logic
 	err := r.ParseMultipartForm(100 << 20)
 	if err != nil {
 		fmt.Println("Error parsing form:", err)
 		http.Error(w, "File too large or invalid format", http.StatusBadRequest)
 		return
 	}
-	fmt.Printf(">> Upload & Parse Duration: %v\n", time.Since(requestStart))
 
-	// 2. Get Form Schema ID
 	formIDStr := r.FormValue("form_schema_id")
 	formID, err := strconv.Atoi(formIDStr)
 	if err != nil {
@@ -210,7 +229,6 @@ func (h *FormHandler) SubmitForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Get the Text Answers
 	jsonData := r.FormValue("data")
 	var answers map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonData), &answers); err != nil {
@@ -218,27 +236,18 @@ func (h *FormHandler) SubmitForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Process Uploaded Files
 	if err := os.MkdirAll("./uploads", os.ModePerm); err != nil {
 		http.Error(w, "Server storage error", http.StatusInternalServerError)
 		return
 	}
 
-	fileProcessStart := time.Now()
-	filesSaved := 0
-
-	// Iterate over all uploaded files
 	for key, fileHeaders := range r.MultipartForm.File {
 		for _, fileHeader := range fileHeaders {
-			filesSaved++
-			singleFileStart := time.Now()
-
 			file, err := fileHeader.Open()
 			if err != nil {
 				continue
 			}
 
-			// Generate unique filename
 			ext := filepath.Ext(fileHeader.Filename)
 			if ext == "" {
 				ext = ".webm"
@@ -246,45 +255,30 @@ func (h *FormHandler) SubmitForm(w http.ResponseWriter, r *http.Request) {
 			newFilename := fmt.Sprintf("%d-%s%s", time.Now().Unix(), "video", ext)
 			dstPath := filepath.Join("uploads", newFilename)
 
-			// Save to disk
 			dst, err := os.Create(dstPath)
 			if err != nil {
 				file.Close()
-				fmt.Println("Error creating file:", err)
 				http.Error(w, "Failed to save file", http.StatusInternalServerError)
 				return
 			}
 
-			// Write file
-			writtenBytes, err := io.Copy(dst, file)
-
+			_, err = io.Copy(dst, file)
 			dst.Close()
 			file.Close()
 
 			if err != nil {
-				fmt.Println("Error writing file:", err)
 				continue
 			}
 
-			// Generate Public URL
 			protocol := "http"
 			if r.TLS != nil {
 				protocol = "https"
 			}
 			publicURL := fmt.Sprintf("%s://%s/uploads/%s", protocol, r.Host, newFilename)
-
-			// Save URL to database map
 			answers[key] = publicURL
-
-			fmt.Printf("   -> Saved: %s | Size: %.2f MB | Time: %v\n",
-				newFilename, float64(writtenBytes)/(1024*1024), time.Since(singleFileStart))
 		}
 	}
 
-	fmt.Printf(">> Disk Write Duration (%d files): %v\n", filesSaved, time.Since(fileProcessStart))
-
-	// 6. Save to Database
-	dbStart := time.Now()
 	finalJSON, err := json.Marshal(answers)
 	if err != nil {
 		http.Error(w, "Failed to process submission", http.StatusInternalServerError)
@@ -295,8 +289,6 @@ func (h *FormHandler) SubmitForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to save submission: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	fmt.Printf(">> Database Save Duration: %v\n", time.Since(dbStart))
-	fmt.Printf("--- [DONE] Total Request Duration: %v ---\n", time.Since(requestStart))
 
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Submission saved successfully"})
@@ -304,6 +296,7 @@ func (h *FormHandler) SubmitForm(w http.ResponseWriter, r *http.Request) {
 
 // GetSubmissions
 func (h *FormHandler) GetSubmissions(w http.ResponseWriter, r *http.Request) {
+	// Keep existing logic
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -323,6 +316,7 @@ func (h *FormHandler) GetSubmissions(w http.ResponseWriter, r *http.Request) {
 
 // DeleteSubmission
 func (h *FormHandler) DeleteSubmission(w http.ResponseWriter, r *http.Request) {
+	// Keep existing logic
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -341,6 +335,7 @@ func (h *FormHandler) DeleteSubmission(w http.ResponseWriter, r *http.Request) {
 
 // DeleteForm
 func (h *FormHandler) DeleteForm(w http.ResponseWriter, r *http.Request) {
+	// Keep existing logic
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {

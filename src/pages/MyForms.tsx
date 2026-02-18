@@ -1,7 +1,7 @@
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { FileText, Plus, Loader2, ExternalLink, Copy, Check, Trash2, MessageSquare } from 'lucide-react';
+import { FileText, Plus, Loader2, ExternalLink, Copy, Check, Trash2, MessageSquare, Edit } from 'lucide-react';
 import { useState } from 'react';
 
 // Define the shape of data coming from Go API
@@ -125,14 +125,23 @@ export function MyForms() {
                         </a>
                     </div>
 
-                    {/* View Responses Button */}
-                    <button 
-                        onClick={() => navigate({ to: '/forms/$formId/responses', params: { formId: form.id.toString() } })}
-                        className="mt-auto w-full flex items-center justify-center gap-2 bg-gray-800 text-white py-2 rounded-lg hover:bg-gray-900 transition font-medium text-sm"
-                    >
-                        <MessageSquare size={16} />
-                        View Responses
-                    </button>
+                    {/* Action Buttons */}
+                    <div className="flex gap-2 mt-auto">
+                        <button 
+                            onClick={() => navigate({ to: '/forms/$formId/responses', params: { formId: form.id.toString() } })}
+                            className="flex-1 flex items-center justify-center gap-2 bg-gray-800 text-white py-2 rounded-lg hover:bg-gray-900 transition font-medium text-sm"
+                        >
+                            <MessageSquare size={16} />
+                            Responses
+                        </button>
+                        <button
+                            onClick={() => navigate({ to: '/builder/$formId', params: { formId: form.id.toString() } })}
+                            className="px-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition flex items-center justify-center"
+                            title="Edit Form"
+                        >
+                            <Edit size={18} />
+                        </button>
+                    </div>
                 </div>
                 ))}
             </div>

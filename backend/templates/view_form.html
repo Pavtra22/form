@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ .Name }}</title>
+    <!-- ... (Keep CSS same as previous) ... -->
     <style>
         /* Mobile-First CSS */
         body { 
@@ -165,24 +166,28 @@
                     </label>
 
                     {{ if eq .Type "text" }}
-                        <input type="text" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
+                        <input type="text" name="{{ .ID }}" id="input-{{ .ID }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
                     {{ else if eq .Type "email" }}
-                        <input type="email" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
+                        <input type="email" name="{{ .ID }}" id="input-{{ .ID }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
                     {{ else if eq .Type "phone" }}
-                        <input type="tel" name="{{ .Label }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
+                        <input type="tel" name="{{ .ID }}" id="input-{{ .ID }}" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}>
                     {{ else if eq .Type "date" }}
-                        <input type="date" name="{{ .Label }}" {{ if .Required }}required{{ end }}>
+                        <input type="date" name="{{ .ID }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
                     {{ else if eq .Type "textarea" }}
-                        <textarea name="{{ .Label }}" rows="4" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}></textarea>
+                        <textarea name="{{ .ID }}" id="input-{{ .ID }}" rows="4" placeholder="{{ .Placeholder }}" {{ if .Required }}required{{ end }}></textarea>
                     {{ else if eq .Type "select" }}
-                        <select name="{{ .Label }}" {{ if .Required }}required{{ end }}>
+                        <select name="{{ .ID }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
                             <option value="" disabled selected>Select an option</option>
-                            <option value="Option 1">Option 1</option>
-                            <option value="Option 2">Option 2</option>
+                            {{ range .Options }}
+                                <option value="{{ . }}">{{ . }}</option>
+                            {{ else }}
+                                <option value="Option 1">Option 1</option>
+                                <option value="Option 2">Option 2</option>
+                            {{ end }}
                         </select>
                     {{ else if eq .Type "stars" }}
                         <div class="stars" id="stars-{{ .ID }}">
-                            <input type="hidden" name="{{ .Label }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
+                            <input type="hidden" name="{{ .ID }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
                             <button type="button" class="star" onclick="setRating('{{ .ID }}', 1)">★</button>
                             <button type="button" class="star" onclick="setRating('{{ .ID }}', 2)">★</button>
                             <button type="button" class="star" onclick="setRating('{{ .ID }}', 3)">★</button>
@@ -191,7 +196,7 @@
                         </div>
                     {{ else if eq .Type "video" }}
                         <div class="video-container" id="video-wrapper-{{ .ID }}">
-                            <input type="hidden" name="{{ .Label }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
+                            <input type="hidden" name="{{ .ID }}" id="input-{{ .ID }}" {{ if .Required }}required{{ end }}>
                             
                             <video id="preview-{{ .ID }}" autoplay muted playsinline></video>
                             <video id="playback-{{ .ID }}" controls playsinline></video>
@@ -228,20 +233,50 @@
 </div>
 
 <script>
+    // --- LOAD RAW FORM DATA ---
+    // FIXED: Using backticks to handle potential quote issues in JSON string
+    const rawData = `{{ .RawElements }}`; 
+    // Parse raw data to build logic map
+    const logicMap = {};
+    let pages = [];
+    
+    try {
+        // Parse the JSON string
+        const parsed = JSON.parse(rawData);
+        pages = Array.isArray(parsed) ? parsed : (parsed.pages || []);
+        
+        pages.forEach((page, index) => {
+            if (page.logicRules && page.logicRules.length > 0) {
+                logicMap[index] = page.logicRules.map(rule => {
+                    const targetIndex = pages.findIndex(p => p.id === rule.targetPageId);
+                    return {
+                        targetPageIndex: targetIndex,
+                        matchType: rule.matchType,
+                        conditions: rule.conditions.map(cond => ({
+                            triggerId: cond.triggerElementId,
+                            operator: cond.operator,
+                            value: cond.value
+                        }))
+                    };
+                });
+            }
+        });
+    } catch(e) {
+        console.error("Failed to parse logic", e);
+    }
+
     // --- STEP NAVIGATION LOGIC ---
     let currentStep = 0;
     const steps = document.querySelectorAll('.form-step');
     const totalSteps = steps.length;
 
     function showStep(n) {
-        // If no steps (empty form), do nothing to prevent errors
         if (totalSteps === 0) return;
 
         steps.forEach((step, index) => {
             step.classList.toggle('active', index === n);
         });
 
-        // Button Logic
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
         const submitBtn = document.getElementById('submitBtn');
@@ -261,8 +296,53 @@
     }
 
     function changeStep(n) {
-        // Validate current step before moving forward
+        // Validation only when moving forward
         if (n === 1 && !validateStep(currentStep)) return;
+
+        // --- AND/OR LOGIC CHECK ---
+        if (n === 1 && logicMap[currentStep]) {
+            const rules = logicMap[currentStep];
+            let jumpTargetPage = -1;
+
+            for (const rule of rules) {
+                let conditionsMet = 0;
+                let conditionsTotal = rule.conditions.length;
+
+                for (const cond of rule.conditions) {
+                    const input = document.getElementById('input-' + cond.triggerId);
+                    if (!input) continue;
+                    
+                    const val = input.value;
+                    const compareVal = cond.value;
+                    let match = false;
+
+                    if (cond.operator === 'equals') match = val == compareVal;
+                    else if (cond.operator === 'not_equals') match = val != compareVal;
+                    else if (cond.operator === 'greater_than') match = parseFloat(val) > parseFloat(compareVal);
+                    else if (cond.operator === 'less_than') match = parseFloat(val) < parseFloat(compareVal);
+
+                    if (match) conditionsMet++;
+                }
+
+                let ruleMatched = false;
+                if (rule.matchType === 'AND') {
+                    ruleMatched = conditionsMet === conditionsTotal;
+                } else { // OR
+                    ruleMatched = conditionsMet > 0;
+                }
+
+                if (ruleMatched && rule.targetPageIndex !== -1) {
+                    jumpTargetPage = rule.targetPageIndex;
+                    break; 
+                }
+            }
+
+            if (jumpTargetPage !== -1) {
+                currentStep = jumpTargetPage;
+                showStep(currentStep);
+                return;
+            }
+        }
 
         currentStep += n;
         showStep(currentStep);
@@ -279,7 +359,6 @@
         inputs.forEach(input => {
             if (input.hasAttribute('required') && !input.value.trim()) {
                 input.style.borderColor = "red";
-                // Shake effect or scroll to first error could be added here
                 valid = false;
             } else {
                 input.style.borderColor = "#d1d5db";
@@ -414,14 +493,14 @@
             const input = container.querySelector('input[type="hidden"]');
             
             if (input) {
-                const id = input.id.replace('input-', '');
-                const label = input.name; 
-
-                if (finalBlobs[id]) {
-                    const mime = recordedTypes[id] || '';
+                // IMPORTANT: The input name is now the UUID (e.g., "be8b4612...")
+                const uuid = input.name; 
+                
+                if (finalBlobs[uuid]) {
+                    const mime = recordedTypes[uuid] || '';
                     const ext = mime.includes('mp4') ? 'mp4' : 'webm';
                     const filename = `video-${Date.now()}.${ext}`;
-                    finalFormData.append(label, finalBlobs[id], filename);
+                    finalFormData.append(uuid, finalBlobs[uuid], filename);
                 }
             }
         });

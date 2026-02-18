@@ -32,8 +32,7 @@ func main() {
 
 	// CORS Configuration (STRICT MODE)
 	r.Use(cors.Handler(cors.Options{
-		// Explicitly list your frontend URL. Wildcard "*" does NOT work with AllowCredentials
-		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173"},
+		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4173"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
@@ -51,6 +50,7 @@ func main() {
 		r.Post("/forms", handler.CreateForm)
 		r.Get("/forms", handler.GetForms)
 		r.Get("/forms/{id}", handler.GetForm)
+		r.Put("/forms/{id}", handler.UpdateForm) // NEW: Update Route
 		r.Delete("/forms/{id}", handler.DeleteForm)
 
 		r.Post("/submit", handler.SubmitForm)

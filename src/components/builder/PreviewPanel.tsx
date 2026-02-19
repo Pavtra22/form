@@ -1,18 +1,16 @@
-import { EyeOff, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 
 interface PreviewPanelProps {
   width: number | string;
   previewSrc: string;
-  onClose?: () => void; // Made optional since it's now always visible in the center
   formId?: string;
-  hideCloseButton?: boolean; // Added to support the fixed center layout
 }
 
-export function PreviewPanel({ width, previewSrc, onClose, formId, hideCloseButton }: PreviewPanelProps) {
+export function PreviewPanel({ width, previewSrc, formId }: PreviewPanelProps) {
   return (
     <div 
-      style={{ width }} 
-      className="flex flex-col bg-white h-full overflow-hidden shrink-0 shadow-sm transition-[width] duration-0 border border-gray-200 rounded-lg"
+      style={{ width }}
+      className="flex flex-col bg-white h-full overflow-hidden shrink-0 transition-[width] duration-0"
     >
         {/* Header Section */}
         <div className="p-3 border-b bg-gray-50 flex justify-between items-center shrink-0 h-12">
@@ -25,33 +23,24 @@ export function PreviewPanel({ width, previewSrc, onClose, formId, hideCloseButt
             <div className="flex items-center gap-2">
                 {formId && (
                     <a 
-                        href={`http://localhost:8080/public/forms/${formId}`} 
-                        target="_blank" 
+                        href={`/public/forms/${formId}`}
+                        target="_blank"
                         rel="noreferrer"
-                        className="text-gray-400 hover:text-blue-600 p-1 transition-colors"
+                        className="text-gray-500 hover:text-blue-600 p-1"
                         title="Open in new tab"
                     >
                         <ExternalLink size={16} />
                     </a>
                 )}
-                
-                {!hideCloseButton && onClose && (
-                    <button 
-                      onClick={onClose} 
-                      className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-gray-100"
-                      title="Close Preview"
-                    >
-                        <EyeOff size={16} />
-                    </button>
-                )}
             </div>
         </div>
 
         {/* Iframe Content Section */}
+        {/* Changed min-h-[600px] to h-full to allow the parent's scrollable container to manage visibility */}
         <div className="flex-1 bg-white relative h-full w-full">
             <iframe 
-                srcDoc={previewSrc} 
-                title="Form Preview" 
+                srcDoc={previewSrc}
+                title="Form Preview"
                 className="w-full h-full border-0 block"
                 sandbox="allow-scripts"
             />

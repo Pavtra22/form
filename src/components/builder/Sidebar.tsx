@@ -21,6 +21,7 @@ export function Sidebar() {
         droppableId="SIDEBAR" 
         isDropDisabled={true} 
         direction="horizontal"
+        type="ELEMENT"
       >
         {(provided, snapshot) => (
           <div

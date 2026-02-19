@@ -32,13 +32,11 @@ export function Builder() {
   const [isLoading, setIsLoading] = useState(!!formId);
   const [isSaving, setIsSaving] = useState(false);
   
-  // Adjusted initial widths for the new layout
   const [widths, setWidths] = useState({ sidebar: 350, props: 300 });
   const resizingRef = useRef<string | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const navigate = useNavigate();
 
-  // --- Load Form Data ---
   useEffect(() => {
     if (!formId) return;
     const fetchForm = async () => {
@@ -66,18 +64,15 @@ export function Builder() {
     fetchForm();
   }, [formId, setForm]);
 
-  // --- Drag and Drop Logic ---
   const onDragEnd = (result: DropResult) => {
     const { source, destination, type } = result;
     if (!destination) return;
 
-    // Handle reordering entire pages in the accordion list
     if (type === 'PAGE') {
       reorderPages(source.index, destination.index);
       return;
     }
 
-    // Handle adding new elements from the top Toolbar (Sidebar) to specific page accordions
     if (source.droppableId === 'SIDEBAR') {
       const tool = TOOLS[source.index];
       const targetPageId = destination.droppableId; 
@@ -92,13 +87,11 @@ export function Builder() {
       return;
     }
 
-    // Handle reordering elements within a specific page accordion
     if (source.droppableId === destination.droppableId) {
       reorderElements(source.index, destination.index, destination.droppableId);
     }
   };
 
-  // --- Resizing Logic ---
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!resizingRef.current) return;
     const screenWidth = window.innerWidth;
@@ -137,7 +130,6 @@ export function Builder() {
     setIsResizing(true);
   };
 
-  // --- Save Logic ---
   const handleSave = async () => {
     if (!formName.trim()) return;
     setIsSaving(true);
@@ -172,7 +164,6 @@ export function Builder() {
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="flex h-screen w-full flex-col bg-gray-50 overflow-hidden">
         
-        {/* Header */}
         <header className="flex items-center justify-between border-b px-6 py-3 bg-white shadow-sm z-30 shrink-0 h-16">
             <div className="flex items-center gap-4">
                 <h1 className="text-xl font-bold text-gray-800">{formId ? 'Edit Form' : 'New Form'}</h1>
@@ -182,41 +173,37 @@ export function Builder() {
                 />
             </div>
             <div className="flex gap-2">
-                <button onClick={() => navigate({ to: '/forms' })} className="flex items-center gap-2 text-gray-600 px-3 py-2 hover:bg-gray-100 rounded text-sm">
+                <button onClick={() => navigate({ to: '/forms' })} className="flex items-center gap-2 text-gray-600 px-4 py-2 hover:bg-gray-100 rounded text-sm font-medium transition-colors">
                     <Home size={16} /> My Forms
                 </button>
-                <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+                <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm">
                     <Save size={16} /> {formId ? "Update" : "Save"}
                 </button>
             </div>
         </header>
 
-        {/* Toolbar Section (Top) - Component icons bar */}
         <div className="w-full bg-white border-b z-20">
             <Sidebar />
         </div>
 
         <main className={`flex flex-1 overflow-hidden relative ${isResizing ? 'pointer-events-none' : ''}`}>
           
-          {/* Left Column: Canvas (Accordions list of pages) */}
           <div style={{ width: widths.sidebar }} className="flex flex-col border-r bg-gray-100 h-full overflow-hidden shrink-0">
              <Canvas />
           </div>
           <Resizer onMouseDown={startResizing('sidebar')} />
 
-          {/* Center Column: Live Preview (Always Visible focused area) */}
           <div className="flex-1 bg-white h-full overflow-hidden flex flex-col relative">
              <div className="flex items-center justify-center p-2 bg-gray-50 border-b text-xs font-bold text-gray-400 uppercase tracking-widest">
                 Live Form Preview
              </div>
-             <div className="flex-1 overflow-auto p-10 bg-gray-200/50">
-                <div className="max-w-2xl mx-auto shadow-2xl h-fit min-h-full">
-                    <PreviewPanel width="100%" previewSrc={previewSrc} hideCloseButton={true} />
+             <div className="flex-1 overflow-y-auto p-4 bg-gray-200/50">
+                <div className="w-full h-full shadow-2xl bg-white rounded-lg overflow-hidden">
+                    <PreviewPanel width="100%" previewSrc={previewSrc} />
                 </div>
              </div>
           </div>
 
-          {/* Right Column: Properties */}
           <Resizer onMouseDown={startResizing('props')} />
           <div style={{ width: widths.props }} className="flex flex-col border-l bg-white h-full overflow-hidden shrink-0">
             <PropertiesPanel />
@@ -224,7 +211,6 @@ export function Builder() {
 
         </main>
         
-        {/* Save Confirmation Modal */}
         {isModalOpen && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                 <div className="bg-white p-6 rounded-lg shadow-xl w-96">
@@ -232,7 +218,7 @@ export function Builder() {
                     <p className="mb-4 text-gray-600">Save <strong>{formName || "Untitled Form"}</strong>?</p>
                     <div className="flex justify-end gap-2">
                         <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-                        <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2">
+                        <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2 transition-colors">
                             {isSaving && <Loader2 size={16} className="animate-spin" />}
                             Confirm
                         </button>

@@ -26,10 +26,14 @@ func NewFormRepository(db *gorm.DB) FormRepository {
 }
 
 func (r *formRepository) CreateForm(form *models.Form) (*models.Form, error) {
-	if err := r.db.Create(form).Error; err != nil {
+	if err := r.db.Create(form).Error; err != nil { // Automatically handles Logic/Version
 		return nil, err
 	}
 	return form, nil
+}
+
+func (r *formRepository) UpdateForm(form *models.Form) error {
+	return r.db.Save(form).Error // Automatically handles Logic/Version
 }
 
 func (r *formRepository) GetAllForms() ([]models.Form, error) {
@@ -46,10 +50,6 @@ func (r *formRepository) GetForm(id uint) (*models.Form, error) {
 		return nil, err
 	}
 	return &form, nil
-}
-
-func (r *formRepository) UpdateForm(form *models.Form) error {
-	return r.db.Save(form).Error
 }
 
 func (r *formRepository) DeleteForm(id uint) error {
